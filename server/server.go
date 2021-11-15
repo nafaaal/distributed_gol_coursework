@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"net"
+	"net/http"
 	"net/rpc"
 	"sync"
 	"uk.ac.bris.cs/gameoflife/util"
@@ -133,13 +134,13 @@ func distributor(req stubs.Request, res *stubs.Response) {
 		mutex.Unlock()
 		turn++
 	}
-	res.World = req.InitialWorld
+	res.World = world
 
 }
 
 type GameOfLifeOperation struct{}
 
-func (s *GameOfLifeOperation) GetTurn(req stubs.TurnRequest, res *stubs.TurnResponse) (err error) {
+func (s *GameOfLifeOperation) GetAliveCell(req stubs.TurnRequest, res *stubs.TurnResponse) (err error) {
 	fmt.Println("HELLO")
 	mutex.Lock()
 	res.Turn = turn
@@ -155,6 +156,7 @@ func (s *GameOfLifeOperation) CompleteTurn(req stubs.Request, res *stubs.Respons
 }
 
 func main() {
+	http.ListenAndServe("localhost:8030", nil)
 	pAddr := flag.String("port", "8030", "Port to listen on")
 	flag.Parse()
 	rpc.Register(&GameOfLifeOperation{})

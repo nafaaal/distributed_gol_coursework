@@ -76,7 +76,7 @@ func timers(client *rpc.Client, ticker *time.Ticker, c distributorChannels, p Pa
 		<- ticker.C
 		turnRequest := stubs.TurnRequest{}
 		turnResponse := new(stubs.TurnResponse)
-		getTurn(client, turnRequest, turnResponse)
+		getAliveCells(client, turnRequest, turnResponse)
 		c.events <- AliveCellsCount{turnResponse.Turn, turnResponse.CellCount}
 	}
 }
@@ -86,19 +86,22 @@ func timers(client *rpc.Client, ticker *time.Ticker, c distributorChannels, p Pa
 // distributor divides the work between workers and interacts with other goroutines.
 func distributor(p Params, c distributorChannels, keyPresses <-chan rune, ) {
 
-	initialWorld := makeMatrix(p.ImageHeight, p.ImageWidth)
-	world := readPgmData(p, c, initialWorld)
+	matrix := makeMatrix(p.ImageHeight, p.ImageWidth)
+	initialWorld := readPgmData(p, c, matrix)
 	var response *stubs.Response
 
+	//http.ListenAndServe("localhost:8080", nil)
 	server := "127.0.0.1:8030"
 	client, _ := rpc.Dial("tcp", server)
 	defer client.Close()
 
-	ticker := time.NewTicker(2 * time.Second)
-	go timers(client, ticker, c, p)
+	//ticker := time.NewTicker(2 * time.Second)
+	//go timers(client, ticker, c, p)
 
+	req := stubs.Request{Turns: p.Turns, Threads: p.Threads, ImageWidth: p.ImageWidth, ImageHeight: p.ImageHeight, InitialWorld: initialWorld}
 	response = new(stubs.Response)
-	makeCall(p, world, client, response)
+	makeCall(req, client, response)
+
 
 
 	c.events <- FinalTurnComplete{p.Turns, findAliveCells(p, response.World)}
@@ -114,16 +117,15 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune, ) {
 	close(c.events)
 }
 
-func makeCall(p Params, world [][]uint8, client *rpc.Client, response *stubs.Response) {
-	request := stubs.Request{Turns: p.Turns, Threads: p.Threads, ImageWidth: p.ImageWidth, ImageHeight: p.ImageHeight, InitialWorld: world}
-	err := client.Call(stubs.TurnHandler, request, response)
+func makeCall(req stubs.Request, client *rpc.Client, res *stubs.Response) {
+	err := client.Call(stubs.TurnHandler, req, res)
 	if err != nil {
 		fmt.Println("make call oof")
 	}
 }
 
-func getTurn(client *rpc.Client, req stubs.TurnRequest, res *stubs.TurnResponse) {
-	err := client.Call(stubs.TurnHandler, req, res)
+func getAliveCells(client *rpc.Client, req stubs.TurnRequest, res *stubs.TurnResponse) {
+	err := client.Call(stubs.AliveCellGetter, req, res)
 	if err != nil {
 		fmt.Println("get turn oof")
 	}

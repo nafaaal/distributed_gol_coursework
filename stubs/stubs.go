@@ -1,6 +1,7 @@
 package stubs
 
 var TurnHandler = "GameOfLifeOperation.CompleteTurn"
+var AliveCellGetter = "GameOfLifeOperation.GetAliveCell"
 
 
 type Response struct {
