@@ -103,12 +103,21 @@ func playTurn(p stubs.Params, turn int, world [][]byte) [][]byte {
 	return newPixelData
 }
 
+//func giveTurn(turn chan int){
+//	x := <- turn
+//	return x
+//}
+
 // distributor divides the work between workers and interacts with other goroutines.
 func distributor(req stubs.Request, res *stubs.Response) {
 
 	turn := 0
+	//turnchan := make(chan int)
+	//go giveTurn(turnchan)
+
 	// temp := makeMatrix(req.P.ImageWidth, req.P.ImageHeight)
 	for turn < req.P.Turns {
+		//turnchan <- turn
 		req.InitialWorld = playTurn(req.P, turn, req.InitialWorld)
 		turn++
 	}
@@ -117,6 +126,12 @@ func distributor(req stubs.Request, res *stubs.Response) {
 }
 
 type GameOfLifeOperation struct{}
+
+func (s *GameOfLifeOperation) GetTurn(req stubs.Request, res *stubs.Response) (err error) {
+	distributor(req, res)
+	fmt.Println("RETURNED TO SERVER")
+	return
+}
 
 func (s *GameOfLifeOperation) CompleteTurn(req stubs.Request, res *stubs.Response) (err error) {
 	distributor(req, res)

@@ -72,10 +72,14 @@ func findAliveCells(p Params, world [][]uint8) []util.Cell {
 
 
 // distributor divides the work between workers and interacts with other goroutines.
-func distributor(p Params, c distributorChannels, keyPresses <-chan rune, client *rpc.Client) {
+func distributor(p Params, c distributorChannels, keyPresses <-chan rune, ) {
 
 	initialWorld := makeMatrix(p.ImageHeight, p.ImageWidth)
 	world := readPgmData(p, c, initialWorld)
+
+	server := "127.0.0.1:8030"
+	client, _ := rpc.Dial("tcp", server)
+	defer client.Close()
 
 	P := stubs.Params{Turns: p.Turns, Threads: p.Threads, ImageWidth: p.ImageHeight, ImageHeight: p.ImageWidth}
 	request := stubs.Request{P: P, InitialWorld: world}
