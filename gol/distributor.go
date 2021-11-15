@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/rpc"
 	"strconv"
+	"time"
 
 	"uk.ac.bris.cs/gameoflife/stubs"
 	"uk.ac.bris.cs/gameoflife/util"
@@ -58,7 +59,7 @@ func writePgmData(p Params, c distributorChannels, world [][]uint8) {
 	c.events <- ImageOutputComplete{p.Turns, filename}
 }
 
-func findAliveCells(p Params, world [][]uint8) []util.Cell {
+func findAliveCells(p Params, world [][]byte) []util.Cell {
 	var alive []util.Cell
 	for col := 0; col < p.ImageHeight; col++ {
 		for row := 0; row < p.ImageWidth; row++ {
@@ -70,21 +71,34 @@ func findAliveCells(p Params, world [][]uint8) []util.Cell {
 	return alive
 }
 
+func timers(client *rpc.Client, ticker *time.Ticker, c distributorChannels, p Params) {
+	for {
+		<- ticker.C
+		turnRequest := stubs.TurnRequest{}
+		turnResponse := new(stubs.TurnResponse)
+		getTurn(client, turnRequest, turnResponse)
+		c.events <- AliveCellsCount{turnResponse.Turn, turnResponse.CellCount}
+	}
+}
+
+
 
 // distributor divides the work between workers and interacts with other goroutines.
 func distributor(p Params, c distributorChannels, keyPresses <-chan rune, ) {
 
 	initialWorld := makeMatrix(p.ImageHeight, p.ImageWidth)
 	world := readPgmData(p, c, initialWorld)
+	var response *stubs.Response
 
 	server := "127.0.0.1:8030"
 	client, _ := rpc.Dial("tcp", server)
 	defer client.Close()
 
-	P := stubs.Params{Turns: p.Turns, Threads: p.Threads, ImageWidth: p.ImageHeight, ImageHeight: p.ImageWidth}
-	request := stubs.Request{P: P, InitialWorld: world}
-	response := new(stubs.Response)
-	makeCall(client, request, response)
+	ticker := time.NewTicker(2 * time.Second)
+	go timers(client, ticker, c, p)
+
+	response = new(stubs.Response)
+	makeCall(p, world, client, response)
 
 
 	c.events <- FinalTurnComplete{p.Turns, findAliveCells(p, response.World)}
@@ -100,12 +114,17 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune, ) {
 	close(c.events)
 }
 
-func makeCall(client *rpc.Client, req stubs.Request, res *stubs.Response) {
-
-	err := client.Call(stubs.TurnHandler, req, res)
+func makeCall(p Params, world [][]uint8, client *rpc.Client, response *stubs.Response) {
+	request := stubs.Request{Turns: p.Turns, Threads: p.Threads, ImageWidth: p.ImageWidth, ImageHeight: p.ImageHeight, InitialWorld: world}
+	err := client.Call(stubs.TurnHandler, request, response)
 	if err != nil {
 		fmt.Println("make call oof")
 	}
+}
 
-
+func getTurn(client *rpc.Client, req stubs.TurnRequest, res *stubs.TurnResponse) {
+	err := client.Call(stubs.TurnHandler, req, res)
+	if err != nil {
+		fmt.Println("get turn oof")
+	}
 }
