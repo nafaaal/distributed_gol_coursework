@@ -103,21 +103,13 @@ func playTurn(p stubs.Params, turn int, world [][]byte) [][]byte {
 	return newPixelData
 }
 
-//func giveTurn(turn chan int){
-//	x := <- turn
-//	return x
-//}
 
 // distributor divides the work between workers and interacts with other goroutines.
 func distributor(req stubs.Request, res *stubs.Response) {
 
 	turn := 0
-	//turnchan := make(chan int)
-	//go giveTurn(turnchan)
 
-	// temp := makeMatrix(req.P.ImageWidth, req.P.ImageHeight)
 	for turn < req.P.Turns {
-		//turnchan <- turn
 		req.InitialWorld = playTurn(req.P, turn, req.InitialWorld)
 		turn++
 	}
@@ -142,7 +134,6 @@ func (s *GameOfLifeOperation) CompleteTurn(req stubs.Request, res *stubs.Respons
 func main() {
 	pAddr := flag.String("port", "8030", "Port to listen on")
 	flag.Parse()
-	//rand.Seed(time.Now().UnixNano())
 	rpc.Register(&GameOfLifeOperation{})
 	listener, _ := net.Listen("tcp", ":"+*pAddr)
 	defer listener.Close()
