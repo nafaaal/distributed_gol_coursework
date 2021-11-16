@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/rpc"
 	"strconv"
+	"time"
 
 	"uk.ac.bris.cs/gameoflife/stubs"
 	"uk.ac.bris.cs/gameoflife/util"
@@ -70,17 +71,54 @@ func findAliveCells(p Params, world [][]uint8) []util.Cell {
 	return alive
 }
 
+func timer(client *rpc.Client, c distributorChannels) {
+	ticker := time.NewTicker(10 * time.Second)
+	turnRequest := stubs.TurnRequest{}
+	turnResponse := new(stubs.TurnResponse)
+	for {
+		<- ticker.C
+		getAliveCells(client, turnRequest, turnResponse)
+		c.events <- AliveCellsCount{turnResponse.Turn, turnResponse.CellCount}
+	}
+}
+
 
 // distributor divides the work between workers and interacts with other goroutines.
-func distributor(p Params, c distributorChannels, keyPresses <-chan rune, client *rpc.Client) {
+// Also server keeps on going even after control C need to fix that
+func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
+
+	server := "127.0.0.1:8030"
+	client, _ := rpc.Dial("tcp", server)
+	defer client.Close()
 
 	initialWorld := makeMatrix(p.ImageHeight, p.ImageWidth)
 	world := readPgmData(p, c, initialWorld)
+	var response *stubs.Response
+
+
+	go timer(client, c)
+
+
+	//for !done {
+	//	select {
+	//	case <- ticker.C:
+	//		turnRequest := stubs.TurnRequest{}
+	//		turnResponse := new(stubs.TurnResponse)
+	//		getAliveCells(client, turnRequest, turnResponse)
+	//		c.events <- AliveCellsCount{turnResponse.Turn, turnResponse.CellCount}
+	//	default:
+	//		P := stubs.Params{Turns: p.Turns, Threads: p.Threads, ImageWidth: p.ImageHeight, ImageHeight: p.ImageWidth}
+	//		request := stubs.Request{P: P, InitialWorld: world}
+	//		response = new(stubs.Response)
+	//		makeCall(client, request, response)
+	//	}
+	//}
 
 	P := stubs.Params{Turns: p.Turns, Threads: p.Threads, ImageWidth: p.ImageHeight, ImageHeight: p.ImageWidth}
 	request := stubs.Request{P: P, InitialWorld: world}
-	response := new(stubs.Response)
+	response = new(stubs.Response)
 	makeCall(client, request, response)
+
 
 
 	c.events <- FinalTurnComplete{p.Turns, findAliveCells(p, response.World)}
@@ -103,5 +141,11 @@ func makeCall(client *rpc.Client, req stubs.Request, res *stubs.Response) {
 		fmt.Println("make call oof")
 	}
 
+}
 
+func getAliveCells(client *rpc.Client, req stubs.TurnRequest, res *stubs.TurnResponse) {
+	err := client.Call(stubs.AliveCellGetter, req, res)
+	if err != nil {
+		fmt.Println("get turn oof")
+	}
 }

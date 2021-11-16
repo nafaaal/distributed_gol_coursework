@@ -5,9 +5,26 @@ import (
 	"fmt"
 	"net"
 	"net/rpc"
+	"uk.ac.bris.cs/gameoflife/util"
 
 	"uk.ac.bris.cs/gameoflife/stubs"
 )
+
+var turn int
+var world [][]byte
+//var mutex sync.Mutex
+
+func findAliveCells(world [][]byte) []util.Cell {
+	var alive []util.Cell
+	for col := 0; col <len(world); col++ {
+		for row := 0; row <len(world); row++ {
+			if world[col][row] == 255 {
+				alive = append(alive, util.Cell{X: row, Y: col})
+			}
+		}
+	}
+	return alive
+}
 
 func getNumberOfNeighbours(p stubs.Params, col, row int, worldCopy func(y, x int) uint8) uint8 {
 	var neighbours uint8
@@ -106,13 +123,15 @@ func playTurn(p stubs.Params, turn int, world [][]byte) [][]byte {
 // distributor divides the work between workers and interacts with other goroutines.
 func distributor(req stubs.Request, res *stubs.Response) {
 
-	turn := 0
-	// temp := makeMatrix(req.P.ImageWidth, req.P.ImageHeight)
+	turn = 0
+	world = req.InitialWorld
 	for turn < req.P.Turns {
-		req.InitialWorld = playTurn(req.P, turn, req.InitialWorld)
+		//mutex.Lock()
+		world = playTurn(req.P, turn, world)
+		//mutex.Unlock()
 		turn++
 	}
-	res.World = req.InitialWorld
+	res.World = world
 
 }
 
@@ -120,11 +139,21 @@ type GameOfLifeOperation struct{}
 
 func (s *GameOfLifeOperation) CompleteTurn(req stubs.Request, res *stubs.Response) (err error) {
 	distributor(req, res)
-	fmt.Println("RETURNED TO SERVER")
+	fmt.Println("Called Complete Turn - Server")
+	return
+}
+
+func (s *GameOfLifeOperation) GetAliveCell(req stubs.TurnRequest, res *stubs.TurnResponse) (err error) {
+	fmt.Println("Called Alive Cells - Server")
+	//mutex.Lock()
+	res.Turn = turn
+	res.CellCount = len(findAliveCells(world))
+	//mutex.Unlock()
 	return
 }
 
 func main() {
+	//http.ListenAndServe("localhost:8030", nil) // this gives some error wtf
 	pAddr := flag.String("port", "8030", "Port to listen on")
 	flag.Parse()
 	//rand.Seed(time.Now().UnixNano())

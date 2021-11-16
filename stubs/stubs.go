@@ -1,6 +1,7 @@
 package stubs
 
 var TurnHandler = "GameOfLifeOperation.CompleteTurn"
+var AliveCellGetter = "GameOfLifeOperation.GetAliveCell"
 
 type Params struct {
 	Turns       int
@@ -11,6 +12,14 @@ type Params struct {
 
 type Response struct {
 	World [][]byte
+}
+
+type TurnResponse struct {
+	Turn int
+	CellCount int
+}
+
+type TurnRequest struct {
 }
 
 type Request struct {
