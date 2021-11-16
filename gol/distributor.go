@@ -71,17 +71,6 @@ func findAliveCells(p Params, world [][]uint8) []util.Cell {
 	return alive
 }
 
-func timer(client *rpc.Client, c distributorChannels) {
-	ticker := time.NewTicker(10 * time.Second)
-	turnRequest := stubs.TurnRequest{}
-	turnResponse := new(stubs.TurnResponse)
-	for {
-		<- ticker.C
-		getAliveCells(client, turnRequest, turnResponse)
-		c.events <- AliveCellsCount{turnResponse.Turn, turnResponse.CellCount}
-	}
-}
-
 
 // distributor divides the work between workers and interacts with other goroutines.
 // Also server keeps on going even after control C need to fix that
@@ -95,35 +84,23 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 	world := readPgmData(p, c, initialWorld)
 	var response *stubs.Response
 
+	ticker := time.NewTicker(2*time.Second)
 
-	//go timer(client, c)
-
-
-	//for !done {
-	//	select {
-	//	case <- ticker.C:
-	//		turnRequest := stubs.TurnRequest{}
-	//		turnResponse := new(stubs.TurnResponse)
-	//		getAliveCells(client, turnRequest, turnResponse)
-	//		c.events <- AliveCellsCount{turnResponse.Turn, turnResponse.CellCount}
-	//	default:
-	//		P := stubs.Params{Turns: p.Turns, Threads: p.Threads, ImageWidth: p.ImageHeight, ImageHeight: p.ImageWidth}
-	//		request := stubs.Request{P: P, InitialWorld: world}
-	//		response = new(stubs.Response)
-	//		makeCall(client, request, response)
-	//	}
-	//}
 	turn := 0
 	P := stubs.Params{Turns: p.Turns, Threads: p.Threads, ImageWidth: p.ImageHeight, ImageHeight: p.ImageWidth}
 	for turn < p.Turns {
-		request := stubs.Request{P: P, InitialWorld: world}
-		response = new(stubs.Response)
-		makeCall(client, request, response)
-		world = response.World
-		turn++
+		select {
+		case <- ticker.C:
+			c.events <- AliveCellsCount{turn, len(findAliveCells(p, world))}
+		default:
+			request := stubs.Request{P: P, InitialWorld: world}
+			response = new(stubs.Response)
+			makeCall(client, request, response)
+			world = response.World
+			turn++
+			c.events <- TurnComplete{turn}
+		}
 	}
-
-
 
 
 	c.events <- FinalTurnComplete{p.Turns, findAliveCells(p, world)}
