@@ -43,8 +43,8 @@ func readPgmData(p Params, c distributorChannels, world [][]uint8) [][]uint8 {
 	return world
 }
 
-func writePgmData(p Params, c distributorChannels, world [][]uint8) {
-	filename := strconv.Itoa(p.ImageWidth) + "x" + strconv.Itoa(p.ImageHeight) + "x" + strconv.Itoa(p.Turns)
+func writePgmData(p Params, c distributorChannels, world [][]uint8, turn int) {
+	filename := strconv.Itoa(p.ImageWidth) + "x" + strconv.Itoa(p.ImageHeight) + "x" + strconv.Itoa(turn)
 	c.ioCommand <- ioOutput
 	c.ioFilename <- filename
 	for col := 0; col < p.ImageHeight; col++ {
@@ -56,7 +56,7 @@ func writePgmData(p Params, c distributorChannels, world [][]uint8) {
 			}
 		}
 	}
-	c.events <- ImageOutputComplete{p.Turns, filename}
+	c.events <- ImageOutputComplete{turn, filename}
 }
 
 func findAliveCells(p Params, world [][]uint8) []util.Cell {
@@ -106,10 +106,10 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 		case key := <- keyPresses:
 			if key == 's' {
 				fmt.Println("Starting output")
-				writePgmData(p, c, world)
+				writePgmData(p, c, world, turn)
 			}
 			if key == 'q' {
-				writePgmData(p, c, world)
+				writePgmData(p, c, world, turn)
 				c.events <- StateChange{turn, Quitting}
 				break NextTurnLoop
 			}
@@ -136,7 +136,7 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 
 
 	c.events <- FinalTurnComplete{p.Turns, findAliveCells(p, world)}
-	writePgmData(p, c, world) // This line needed if out/ does not have files
+	writePgmData(p, c, world, p.Turns) // This line needed if out/ does not have files
 
 	// Make sure that the Io has finished any output before exiting.
 	c.ioCommand <- ioCheckIdle
