@@ -56,7 +56,7 @@ func makeMatrix(height, width int) [][]uint8 {
 	return matrix
 }
 
-func calculateNextState(p stubs.Params, startY, endY, turn int, worldCopy func(y, x int) uint8) [][]byte {
+func calculateNextState(p stubs.Params, startY, endY int, worldCopy func(y, x int) uint8) [][]byte {
 	height := endY - startY
 	width := p.ImageWidth
 	newWorld := makeMatrix(height, width)
@@ -84,16 +84,16 @@ func calculateNextState(p stubs.Params, startY, endY, turn int, worldCopy func(y
 	return newWorld
 }
 
-func worker(p stubs.Params, startY, endY, turn int, worldCopy func(y, x int) uint8, out chan<- [][]uint8) {
-	newPixelData := calculateNextState(p, startY, endY, turn, worldCopy)
+func worker(p stubs.Params, startY, endY int, worldCopy func(y, x int) uint8, out chan<- [][]uint8) {
+	newPixelData := calculateNextState(p, startY, endY, worldCopy)
 	out <- newPixelData
 }
 
-func playTurn(p stubs.Params, turn int, world [][]byte) [][]byte {
+func playTurn(p stubs.Params, world [][]byte) [][]byte {
 	worldCopy := makeImmutableMatrix(world)
 	var newPixelData [][]uint8
 	if p.Threads == 1 {
-		newPixelData = calculateNextState(p, 0, p.ImageHeight, turn, worldCopy)
+		newPixelData = calculateNextState(p, 0, p.ImageHeight, worldCopy)
 	} else {
 		workerChannels := make([]chan [][]uint8, p.Threads)
 		for i := 0; i < p.Threads; i++ {
@@ -108,7 +108,7 @@ func playTurn(p stubs.Params, turn int, world [][]byte) [][]byte {
 			if j == p.Threads-1 { // send the extra part when workerHeight is not a whole number in last iteration
 				endHeight += p.ImageHeight % p.Threads
 			}
-			go worker(p, startHeight, endHeight, turn, worldCopy, workerChannels[j])
+			go worker(p, startHeight, endHeight, worldCopy, workerChannels[j])
 		}
 
 		for k := 0; k < p.Threads; k++ {
@@ -127,7 +127,7 @@ func distributor(req stubs.Request, res *stubs.Response) {
 	world = req.InitialWorld
 	for turn < req.P.Turns {
 		//mutex.Lock()
-		world = playTurn(req.P, turn, world)
+		world = playTurn(req.P, world)
 		//mutex.Unlock()
 		turn++
 	}
@@ -138,7 +138,8 @@ func distributor(req stubs.Request, res *stubs.Response) {
 type GameOfLifeOperation struct{}
 
 func (s *GameOfLifeOperation) CompleteTurn(req stubs.Request, res *stubs.Response) (err error) {
-	distributor(req, res)
+	//distributor(req, res)
+	res.World = playTurn(req.P, req.InitialWorld)
 	fmt.Println("Called Complete Turn - Server")
 	return
 }

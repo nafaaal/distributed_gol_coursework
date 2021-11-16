@@ -96,7 +96,7 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 	var response *stubs.Response
 
 
-	go timer(client, c)
+	//go timer(client, c)
 
 
 	//for !done {
@@ -113,16 +113,21 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 	//		makeCall(client, request, response)
 	//	}
 	//}
-
+	turn := 0
 	P := stubs.Params{Turns: p.Turns, Threads: p.Threads, ImageWidth: p.ImageHeight, ImageHeight: p.ImageWidth}
-	request := stubs.Request{P: P, InitialWorld: world}
-	response = new(stubs.Response)
-	makeCall(client, request, response)
+	for turn < p.Turns {
+		request := stubs.Request{P: P, InitialWorld: world}
+		response = new(stubs.Response)
+		makeCall(client, request, response)
+		world = response.World
+		turn++
+	}
 
 
 
-	c.events <- FinalTurnComplete{p.Turns, findAliveCells(p, response.World)}
-	writePgmData(p, c, response.World) // This line needed if out/ does not have files
+
+	c.events <- FinalTurnComplete{p.Turns, findAliveCells(p, world)}
+	writePgmData(p, c, world) // This line needed if out/ does not have files
 
 	// Make sure that the Io has finished any output before exiting.
 	c.ioCommand <- ioCheckIdle
