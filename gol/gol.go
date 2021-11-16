@@ -2,7 +2,7 @@ package gol
 
 import "flag"
 
-var severIP string
+var serverIP string
 
 // Params provides the details of how to run the Game of Life and which image to load.
 type Params struct {
@@ -16,7 +16,7 @@ type Params struct {
 func Run(p Params, events chan<- Event, keyPresses <-chan rune) {
 
 	flag.StringVar(
-		&severIP,
+		&serverIP,
 		"s",
 		"localhost",
 		"Specify ip address. Defaults to localhost")

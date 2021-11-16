@@ -81,12 +81,16 @@ func callCellFlipped(p Params, intial, nextstate [][]uint8, c distributorChannel
 }
 
 // distributor divides the work between workers and interacts with other goroutines.
-// Also server keeps on going even after control C need to fix that
 func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 
-	server := severIP+":8030"
+	server := serverIP+":8030"
 	client, _ := rpc.Dial("tcp", server)
-	defer client.Close()
+	defer func(client *rpc.Client) {
+		err := client.Close()
+		if err != nil {
+			fmt.Println("Error in connecting to server")
+		}
+	}(client)
 
 	initialWorld := makeMatrix(p.ImageHeight, p.ImageWidth)
 	world := readPgmData(p, c, initialWorld)

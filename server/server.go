@@ -115,8 +115,17 @@ func main() {
 	//http.ListenAndServe("localhost:8030", nil) // this gives some error wtf
 	pAddr := flag.String("port", "8030", "Port to listen on")
 	flag.Parse()
-	rpc.Register(&GameOfLifeOperation{})
+	err := rpc.Register(&GameOfLifeOperation{})
+	if err != nil {
+		fmt.Println("Error in registering GameOfLifeOperation object")
+		return
+	}
 	listener, _ := net.Listen("tcp", ":"+*pAddr)
-	defer listener.Close()
+	defer func(listener net.Listener) {
+		err := listener.Close()
+		if err != nil {
+			fmt.Println("Error in Listener")
+		}
+	}(listener)
 	rpc.Accept(listener)
 }
