@@ -1,5 +1,9 @@
 package gol
 
+import "flag"
+
+var severIP string
+
 // Params provides the details of how to run the Game of Life and which image to load.
 type Params struct {
 	Turns       int
@@ -10,6 +14,13 @@ type Params struct {
 
 // Run starts the processing of Game of Life. It should initialise channels and goroutines.
 func Run(p Params, events chan<- Event, keyPresses <-chan rune) {
+
+	flag.StringVar(
+		&severIP,
+		"s",
+		"localhost",
+		"Specify ip address. Defaults to localhost")
+	flag.Parse()
 
 	fname := make(chan string)
 	out := make(chan uint8)

@@ -84,7 +84,7 @@ func callCellFlipped(p Params, intial, nextstate [][]uint8, c distributorChannel
 // Also server keeps on going even after control C need to fix that
 func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 
-	server := "127.0.0.1:8030"
+	server := severIP+":8030"
 	client, _ := rpc.Dial("tcp", server)
 	defer client.Close()
 
