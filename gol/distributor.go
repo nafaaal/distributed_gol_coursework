@@ -19,7 +19,6 @@ type distributorChannels struct {
 	ioInput    <-chan uint8
 }
 
-
 func makeMatrix(height, width int) [][]uint8 {
 	matrix := make([][]uint8, height)
 	for i := range matrix {
@@ -43,8 +42,8 @@ func readPgmData(p Params, c distributorChannels, world [][]uint8) [][]uint8 {
 	return world
 }
 
-func writePgmData(p Params, c distributorChannels, world [][]uint8) {
-	filename := strconv.Itoa(p.ImageWidth) + "x" + strconv.Itoa(p.ImageHeight) + "x" + strconv.Itoa(p.Turns)
+func writePgmData(p Params, c distributorChannels, world [][]uint8, turn int) {
+	filename := strconv.Itoa(p.ImageWidth) + "x" + strconv.Itoa(p.ImageHeight) + "x" + strconv.Itoa(turn)
 	c.ioCommand <- ioOutput
 	c.ioFilename <- filename
 	for col := 0; col < p.ImageHeight; col++ {
@@ -56,7 +55,7 @@ func writePgmData(p Params, c distributorChannels, world [][]uint8) {
 			}
 		}
 	}
-	c.events <- ImageOutputComplete{p.Turns, filename}
+	c.events <- ImageOutputComplete{turn, filename}
 }
 
 func findAliveCells(p Params, world [][]byte) []util.Cell {
@@ -71,41 +70,69 @@ func findAliveCells(p Params, world [][]byte) []util.Cell {
 	return alive
 }
 
-func timers(client *rpc.Client, ticker *time.Ticker, c distributorChannels, p Params) {
-	for {
-		<- ticker.C
-		turnRequest := stubs.TurnRequest{}
-		turnResponse := new(stubs.TurnResponse)
-		getAliveCells(client, turnRequest, turnResponse)
-		c.events <- AliveCellsCount{turnResponse.Turn, turnResponse.CellCount}
+func callCellFlipped(p Params, intial, nextstate [][]uint8, c distributorChannels, turn int) {
+	for col := 0; col < p.ImageHeight; col++ {
+		for row := 0; row < p.ImageWidth; row++ {
+			if intial[col][row] != nextstate[col][row] {
+				c.events <- CellFlipped{CompletedTurns: turn, Cell: util.Cell{X: row, Y: col}}
+			}
+		}
 	}
 }
 
-
-
 // distributor divides the work between workers and interacts with other goroutines.
-func distributor(p Params, c distributorChannels, keyPresses <-chan rune, ) {
+// Also server keeps on going even after control C need to fix that
+func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 
-	matrix := makeMatrix(p.ImageHeight, p.ImageWidth)
-	initialWorld := readPgmData(p, c, matrix)
-	var response *stubs.Response
-
-	//http.ListenAndServe("localhost:8080", nil)
 	server := "127.0.0.1:8030"
 	client, _ := rpc.Dial("tcp", server)
 	defer client.Close()
 
-	//ticker := time.NewTicker(2 * time.Second)
-	//go timers(client, ticker, c, p)
+	initialWorld := makeMatrix(p.ImageHeight, p.ImageWidth)
+	world := readPgmData(p, c, initialWorld)
+	var response *stubs.Response
 
-	req := stubs.Request{Turns: p.Turns, Threads: p.Threads, ImageWidth: p.ImageWidth, ImageHeight: p.ImageHeight, InitialWorld: initialWorld}
-	response = new(stubs.Response)
-	makeCall(req, client, response)
+	ticker := time.NewTicker(2 * time.Second)
 
+	turn := 0
+NextTurnLoop:
+	for turn < p.Turns {
+		select {
+		case <-ticker.C:
+			c.events <- AliveCellsCount{turn, len(findAliveCells(p, world))}
+		case key := <-keyPresses:
+			if key == 's' {
+				fmt.Println("Starting output")
+				writePgmData(p, c, world, turn)
+			}
+			if key == 'q' {
+				writePgmData(p, c, world, turn)
+				c.events <- StateChange{turn, Quitting}
+				break NextTurnLoop
+			}
+			if key == 'p' {
+				c.events <- StateChange{turn, Paused}
+				for {
+					await := <-keyPresses
+					if await == int32(112) {
+						c.events <- StateChange{turn, Executing}
+						break
+					}
+				}
+			}
+		default:
+			request := stubs.Request{Turns: p.Turns, Threads: p.Threads, ImageWidth: p.ImageHeight, ImageHeight: p.ImageWidth, InitialWorld: world}
+			response = new(stubs.Response)
+			makeCall(client, request, response)
+			callCellFlipped(p, world, response.World, c, turn)
+			world = response.World
+			turn++
+			c.events <- TurnComplete{turn}
+		}
+	}
 
-
-	c.events <- FinalTurnComplete{p.Turns, findAliveCells(p, response.World)}
-	writePgmData(p, c, response.World) // This line needed if out/ does not have files
+	c.events <- FinalTurnComplete{p.Turns, findAliveCells(p, world)}
+	writePgmData(p, c, world, p.Turns) // This line needed if out/ does not have files
 
 	// Make sure that the Io has finished any output before exiting.
 	c.ioCommand <- ioCheckIdle
@@ -117,16 +144,9 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune, ) {
 	close(c.events)
 }
 
-func makeCall(req stubs.Request, client *rpc.Client, res *stubs.Response) {
+func makeCall(client *rpc.Client, req stubs.Request, res *stubs.Response) {
 	err := client.Call(stubs.TurnHandler, req, res)
 	if err != nil {
 		fmt.Println("make call oof")
-	}
-}
-
-func getAliveCells(client *rpc.Client, req stubs.TurnRequest, res *stubs.TurnResponse) {
-	err := client.Call(stubs.AliveCellGetter, req, res)
-	if err != nil {
-		fmt.Println("get turn oof")
 	}
 }
