@@ -71,6 +71,16 @@ func findAliveCells(p Params, world [][]uint8) []util.Cell {
 	return alive
 }
 
+func callCellFlipped(p Params, intial, nextstate [][]uint8, c distributorChannels, turn int){
+	for col := 0; col < p.ImageHeight; col++ {
+		for row := 0; row < p.ImageWidth; row++ {
+			if intial[col][row] != nextstate[col][row]{
+				c.events <- CellFlipped{CompletedTurns: turn, Cell: util.Cell{X: row, Y: col}}
+			}
+		}
+	}
+}
+
 
 // distributor divides the work between workers and interacts with other goroutines.
 // Also server keeps on going even after control C need to fix that
@@ -86,15 +96,38 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 
 	ticker := time.NewTicker(2*time.Second)
 
+
 	turn := 0
+	NextTurnLoop:
 	for turn < p.Turns {
 		select {
 		case <- ticker.C:
 			c.events <- AliveCellsCount{turn, len(findAliveCells(p, world))}
+		case key := <- keyPresses:
+			if key == 's' {
+				fmt.Println("Starting output")
+				writePgmData(p, c, world)
+			}
+			if key == 'q' {
+				writePgmData(p, c, world)
+				c.events <- StateChange{turn, Quitting}
+				break NextTurnLoop
+			}
+			if key == 'p' {
+				c.events <- StateChange{turn, Paused}
+				for {
+					await := <-keyPresses
+					if await == int32(112) {
+						c.events <- StateChange{turn, Executing}
+						break
+					}
+				}
+			}
 		default:
 			request := stubs.Request{Turns: p.Turns, Threads: p.Threads, ImageWidth: p.ImageHeight, ImageHeight: p.ImageWidth, InitialWorld: world}
 			response = new(stubs.Response)
 			makeCall(client, request, response)
+			callCellFlipped(p, world, response.World, c, turn)
 			world = response.World
 			turn++
 			c.events <- TurnComplete{turn}
