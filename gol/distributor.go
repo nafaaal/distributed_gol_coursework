@@ -87,13 +87,12 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 	ticker := time.NewTicker(2*time.Second)
 
 	turn := 0
-	P := stubs.Params{Turns: p.Turns, Threads: p.Threads, ImageWidth: p.ImageHeight, ImageHeight: p.ImageWidth}
 	for turn < p.Turns {
 		select {
 		case <- ticker.C:
 			c.events <- AliveCellsCount{turn, len(findAliveCells(p, world))}
 		default:
-			request := stubs.Request{P: P, InitialWorld: world}
+			request := stubs.Request{Turns: p.Turns, Threads: p.Threads, ImageWidth: p.ImageHeight, ImageHeight: p.ImageWidth, InitialWorld: world}
 			response = new(stubs.Response)
 			makeCall(client, request, response)
 			world = response.World
@@ -123,11 +122,4 @@ func makeCall(client *rpc.Client, req stubs.Request, res *stubs.Response) {
 		fmt.Println("make call oof")
 	}
 
-}
-
-func getAliveCells(client *rpc.Client, req stubs.TurnRequest, res *stubs.TurnResponse) {
-	err := client.Call(stubs.AliveCellGetter, req, res)
-	if err != nil {
-		fmt.Println("get turn oof")
-	}
 }

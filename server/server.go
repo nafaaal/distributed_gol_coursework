@@ -5,28 +5,10 @@ import (
 	"fmt"
 	"net"
 	"net/rpc"
-	"uk.ac.bris.cs/gameoflife/util"
-
 	"uk.ac.bris.cs/gameoflife/stubs"
 )
 
-var turn int
-var world [][]byte
-//var mutex sync.Mutex
-
-func findAliveCells(world [][]byte) []util.Cell {
-	var alive []util.Cell
-	for col := 0; col <len(world); col++ {
-		for row := 0; row <len(world); row++ {
-			if world[col][row] == 255 {
-				alive = append(alive, util.Cell{X: row, Y: col})
-			}
-		}
-	}
-	return alive
-}
-
-func getNumberOfNeighbours(p stubs.Params, col, row int, worldCopy func(y, x int) uint8) uint8 {
+func getNumberOfNeighbours(p stubs.Request, col, row int, worldCopy func(y, x int) uint8) uint8 {
 	var neighbours uint8
 	for i := -1; i < 2; i++ {
 		for j := -1; j < 2; j++ {
@@ -56,16 +38,16 @@ func makeMatrix(height, width int) [][]uint8 {
 	return matrix
 }
 
-func calculateNextState(p stubs.Params, startY, endY int, worldCopy func(y, x int) uint8) [][]byte {
+func calculateNextState(req stubs.Request, startY, endY int, worldCopy func(y, x int) uint8) [][]byte {
 	height := endY - startY
-	width := p.ImageWidth
+	width := req.ImageWidth
 	newWorld := makeMatrix(height, width)
 
 	for col := 0; col < height; col++ {
 		for row := 0; row < width; row++ {
 
 			//startY+col gets the absolute y position when there is more than 1 worker
-			n := getNumberOfNeighbours(p, startY+col, row, worldCopy)
+			n := getNumberOfNeighbours(req, startY+col, row, worldCopy)
 			currentState := worldCopy(startY+col, row)
 
 			if currentState == 255 {
@@ -84,34 +66,34 @@ func calculateNextState(p stubs.Params, startY, endY int, worldCopy func(y, x in
 	return newWorld
 }
 
-func worker(p stubs.Params, startY, endY int, worldCopy func(y, x int) uint8, out chan<- [][]uint8) {
-	newPixelData := calculateNextState(p, startY, endY, worldCopy)
+func worker(req stubs.Request, startY, endY int, worldCopy func(y, x int) uint8, out chan<- [][]uint8) {
+	newPixelData := calculateNextState(req, startY, endY, worldCopy)
 	out <- newPixelData
 }
 
-func playTurn(p stubs.Params, world [][]byte) [][]byte {
-	worldCopy := makeImmutableMatrix(world)
+func playTurn(req stubs.Request) [][]byte {
+	worldCopy := makeImmutableMatrix(req.InitialWorld)
 	var newPixelData [][]uint8
-	if p.Threads == 1 {
-		newPixelData = calculateNextState(p, 0, p.ImageHeight, worldCopy)
+	if req.Threads == 1 {
+		newPixelData = calculateNextState(req, 0, req.ImageHeight, worldCopy)
 	} else {
-		workerChannels := make([]chan [][]uint8, p.Threads)
-		for i := 0; i < p.Threads; i++ {
+		workerChannels := make([]chan [][]uint8, req.Threads)
+		for i := 0; i < req.Threads; i++ {
 			workerChannels[i] = make(chan [][]uint8)
 		}
 
-		workerHeight := p.ImageHeight / p.Threads
+		workerHeight := req.ImageHeight / req.Threads
 
-		for j := 0; j < p.Threads; j++ {
+		for j := 0; j < req.Threads; j++ {
 			startHeight := workerHeight * j
 			endHeight := workerHeight * (j + 1)
-			if j == p.Threads-1 { // send the extra part when workerHeight is not a whole number in last iteration
-				endHeight += p.ImageHeight % p.Threads
+			if j == req.Threads-1 { // send the extra part when workerHeight is not a whole number in last iteration
+				endHeight += req.ImageHeight % req.Threads
 			}
-			go worker(p, startHeight, endHeight, worldCopy, workerChannels[j])
+			go worker(req, startHeight, endHeight, worldCopy, workerChannels[j])
 		}
 
-		for k := 0; k < p.Threads; k++ {
+		for k := 0; k < req.Threads; k++ {
 			result := <-workerChannels[k]
 			newPixelData = append(newPixelData, result...)
 		}
@@ -120,36 +102,11 @@ func playTurn(p stubs.Params, world [][]byte) [][]byte {
 	return newPixelData
 }
 
-// distributor divides the work between workers and interacts with other goroutines.
-func distributor(req stubs.Request, res *stubs.Response) {
-
-	turn = 0
-	world = req.InitialWorld
-	for turn < req.P.Turns {
-		//mutex.Lock()
-		world = playTurn(req.P, world)
-		//mutex.Unlock()
-		turn++
-	}
-	res.World = world
-
-}
-
 type GameOfLifeOperation struct{}
 
 func (s *GameOfLifeOperation) CompleteTurn(req stubs.Request, res *stubs.Response) (err error) {
-	//distributor(req, res)
-	res.World = playTurn(req.P, req.InitialWorld)
+	res.World = playTurn(req)
 	fmt.Println("Called Complete Turn - Server")
-	return
-}
-
-func (s *GameOfLifeOperation) GetAliveCell(req stubs.TurnRequest, res *stubs.TurnResponse) (err error) {
-	fmt.Println("Called Alive Cells - Server")
-	//mutex.Lock()
-	res.Turn = turn
-	res.CellCount = len(findAliveCells(world))
-	//mutex.Unlock()
 	return
 }
 
