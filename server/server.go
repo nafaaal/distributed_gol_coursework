@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/rpc"
+	"sync"
 	"uk.ac.bris.cs/gameoflife/util"
 
 	"uk.ac.bris.cs/gameoflife/stubs"
@@ -12,7 +13,7 @@ import (
 
 var turn int
 var world [][]byte
-//var mutex sync.Mutex
+var mutex sync.Mutex
 
 func findAliveCells(world [][]byte) []util.Cell {
 	var alive []util.Cell
@@ -126,10 +127,11 @@ func distributor(req stubs.Request, res *stubs.Response) {
 	turn = 0
 	world = req.InitialWorld
 	for turn < req.P.Turns {
-		//mutex.Lock()
+		mutex.Lock()
 		world = playTurn(req.P, turn, world)
-		//mutex.Unlock()
+		//fmt.Printf("Completed turn - %d \n" , turn)
 		turn++
+		mutex.Unlock()
 	}
 	res.World = world
 
@@ -139,16 +141,16 @@ type GameOfLifeOperation struct{}
 
 func (s *GameOfLifeOperation) CompleteTurn(req stubs.Request, res *stubs.Response) (err error) {
 	distributor(req, res)
-	fmt.Println("Called Complete Turn - Server")
+	//fmt.Println("Called Complete Turn - Server")
 	return
 }
 
 func (s *GameOfLifeOperation) GetAliveCell(req stubs.TurnRequest, res *stubs.TurnResponse) (err error) {
 	fmt.Println("Called Alive Cells - Server")
-	//mutex.Lock()
+	mutex.Lock()
 	res.Turn = turn
 	res.CellCount = len(findAliveCells(world))
-	//mutex.Unlock()
+	mutex.Unlock()
 	return
 }
 

@@ -71,13 +71,16 @@ func findAliveCells(p Params, world [][]uint8) []util.Cell {
 	return alive
 }
 
-func timer(client *rpc.Client, c distributorChannels) {
-	ticker := time.NewTicker(10 * time.Second)
+func timer(client *rpc.Client, c distributorChannels, finished *bool) {
+	ticker := time.NewTicker(2 * time.Second)
 	turnRequest := stubs.TurnRequest{}
 	turnResponse := new(stubs.TurnResponse)
 	for {
 		<- ticker.C
 		getAliveCells(client, turnRequest, turnResponse)
+		if *finished {
+			return
+		}
 		c.events <- AliveCellsCount{turnResponse.Turn, turnResponse.CellCount}
 	}
 }
@@ -93,12 +96,12 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 
 	initialWorld := makeMatrix(p.ImageHeight, p.ImageWidth)
 	world := readPgmData(p, c, initialWorld)
+	P := stubs.Params{Turns: p.Turns, Threads: p.Threads, ImageWidth: p.ImageHeight, ImageHeight: p.ImageWidth}
 	var response *stubs.Response
 
 
-	go timer(client, c)
 
-
+	//ticker := time.NewTicker(2 * time.Second)
 	//for !done {
 	//	select {
 	//	case <- ticker.C:
@@ -114,10 +117,14 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 	//	}
 	//}
 
-	P := stubs.Params{Turns: p.Turns, Threads: p.Threads, ImageWidth: p.ImageHeight, ImageHeight: p.ImageWidth}
+	boolean := false
+
+	go timer(client, c, &boolean)
+
 	request := stubs.Request{P: P, InitialWorld: world}
 	response = new(stubs.Response)
 	makeCall(client, request, response)
+	boolean = true
 
 
 
@@ -147,5 +154,6 @@ func getAliveCells(client *rpc.Client, req stubs.TurnRequest, res *stubs.TurnRes
 	err := client.Call(stubs.AliveCellGetter, req, res)
 	if err != nil {
 		fmt.Println("get turn oof")
+		fmt.Println(err.Error())
 	}
 }

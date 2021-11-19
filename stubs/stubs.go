@@ -14,12 +14,12 @@ type Response struct {
 	World [][]byte
 }
 
+type TurnRequest struct {
+}
+
 type TurnResponse struct {
 	Turn int
 	CellCount int
-}
-
-type TurnRequest struct {
 }
 
 type Request struct {
