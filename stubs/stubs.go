@@ -11,11 +11,11 @@ type Request struct {
 	ImageWidth  int
 	ImageHeight int
 	GameStatus 	string
-	InitialWorld [][]byte
+	InitialWorld [][]uint8
 }
 
 type Response struct {
-	World [][]byte
+	World [][]uint8
 }
 
 type TurnRequest struct {
@@ -23,7 +23,7 @@ type TurnRequest struct {
 
 type TurnResponse struct {
 	Turn int
-	CellCount int
+	CurrentWorld [][]uint8
 }
 
 type EmptyRequest struct {

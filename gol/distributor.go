@@ -43,8 +43,8 @@ func readPgmData(p Params, c distributorChannels, world [][]uint8) [][]uint8 {
 	return world
 }
 
-func writePgmData(p Params, c distributorChannels, world [][]uint8) {
-	filename := strconv.Itoa(p.ImageWidth) + "x" + strconv.Itoa(p.ImageHeight) + "x" + strconv.Itoa(p.Turns)
+func writePgmData(p Params, c distributorChannels, world [][]uint8, turn int) {
+	filename := strconv.Itoa(p.ImageWidth) + "x" + strconv.Itoa(p.ImageHeight) + "x" + strconv.Itoa(turn)
 	c.ioCommand <- ioOutput
 	c.ioFilename <- filename
 	for col := 0; col < p.ImageHeight; col++ {
@@ -56,7 +56,7 @@ func writePgmData(p Params, c distributorChannels, world [][]uint8) {
 			}
 		}
 	}
-	c.events <- ImageOutputComplete{p.Turns, filename}
+	c.events <- ImageOutputComplete{turn, filename}
 }
 
 func findAliveCells(p Params, world [][]uint8) []util.Cell {
@@ -71,7 +71,7 @@ func findAliveCells(p Params, world [][]uint8) []util.Cell {
 	return alive
 }
 
-func timer(client *rpc.Client, c distributorChannels, finish *bool) {
+func timer(p Params, client *rpc.Client, c distributorChannels, finish *bool) {
 	ticker := time.NewTicker(2 * time.Second)
 	turnRequest := stubs.TurnRequest{}
 	turnResponse := new(stubs.TurnResponse)
@@ -81,39 +81,42 @@ func timer(client *rpc.Client, c distributorChannels, finish *bool) {
 		if *finish {
 			return
 		}
-		c.events <- AliveCellsCount{turnResponse.Turn, turnResponse.CellCount}
+		c.events <- AliveCellsCount{turnResponse.Turn, len(findAliveCells(p, turnResponse.CurrentWorld))}
 	}
 }
 
-func keyPressesFunc(client *rpc.Client, keyPresses <-chan rune, finished *bool, request stubs.Request){
+func saveWorld(p Params, c distributorChannels, client *rpc.Client){
+	turnRequest := stubs.TurnRequest{}
+	turnResponse := new(stubs.TurnResponse)
+	getAliveCells(client, turnRequest, turnResponse)
+	writePgmData(p, c, turnResponse.CurrentWorld, turnResponse.Turn)
+}
+
+func keyPressesFunc(p Params, c distributorChannels, client *rpc.Client, keyPresses <-chan rune, finished *bool, request stubs.Request){
 	for {
 		select {
 		case key := <- keyPresses:
 			if key == 's' {
-				fmt.Println("Pressed S")
-
+				saveWorld(p, c, client)
 			}
-			if key == 'k' {
-				fmt.Println("Pressed K")
-				err := client.Call(stubs.Shutdown, stubs.EmptyRequest{}, stubs.EmptyResponse{})
+			if key == 'q' {
+				fmt.Println("Closing Client...")
+				response := stubs.EmptyResponse{}
+				err := client.Call(stubs.Reset, request, &response)
 				if err != nil {
 					fmt.Println(err.Error())
 				}
-				return
 			}
-			if key == 'q' {
-				fmt.Println("Pressed Q")
-				err := client.Call(stubs.Reset, request, stubs.EmptyResponse{})
+			if key == 'k' {
+				saveWorld(p, c, client)
+				err := client.Call(stubs.Shutdown, stubs.EmptyRequest{}, &stubs.EmptyResponse{})
+				//UNEXPECTED EOF
 				if err != nil {
 					fmt.Println(err.Error())
 				}
 			}
 			if key == 'p' {
 				fmt.Println("Pressed P")
-			}
-		default:
-			if *finished{
-				return
 			}
 		}
 	}
@@ -137,14 +140,15 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 	request := stubs.Request{Turns: p.Turns, Threads: p.Threads, ImageWidth: p.ImageHeight, ImageHeight: p.ImageWidth, GameStatus: "NEW", InitialWorld: world}
 	response := stubs.Response{World: makeMatrix(p.ImageWidth,p.ImageHeight)}
 
-	go timer(client, c, &boolean)
-	go keyPressesFunc(client, keyPresses, &boolean, request)
+	go timer(p, client, c, &boolean)
+	go keyPressesFunc(p, c, client, keyPresses, &boolean, request)
 
+	// return end status somehow, and stop this call when q is pressed.
 	makeCall(client, request, &response)
 	boolean = true
 
 	c.events <- FinalTurnComplete{p.Turns, findAliveCells(p, response.World)}
-	writePgmData(p, c, response.World) // This line needed if out/ does not have files
+	writePgmData(p, c, response.World, p.Turns) // This line needed if out/ does not have files
 
 	// Make sure that the Io has finished any output before exiting.
 	c.ioCommand <- ioCheckIdle
@@ -156,6 +160,7 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 	close(c.events)
 }
 
+//UNEXPECTED EOF
 func makeCall(client *rpc.Client, req stubs.Request, res *stubs.Response) {
 	err := client.Call(stubs.TurnHandler, req, res)
 	if err != nil {

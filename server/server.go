@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"net"
 	"net/rpc"
 	"os"
@@ -111,12 +112,13 @@ func (s *GameOfLifeOperation) CompleteTurn(req stubs.Request, res *stubs.Respons
 func (s *GameOfLifeOperation) GetAliveCell(req stubs.EmptyRequest, res *stubs.TurnResponse) (err error) {
 	mutex.Lock()
 	res.Turn = turn
-	res.CellCount = len(findAliveCells(world))
+	res.CurrentWorld = world
 	mutex.Unlock()
 	return
 }
 
 func (s *GameOfLifeOperation) Shutdown(req stubs.EmptyRequest, res *stubs.EmptyResponse) (err error) {
+	fmt.Println("Exiting...")
 	os.Exit(0)
 	return
 }
