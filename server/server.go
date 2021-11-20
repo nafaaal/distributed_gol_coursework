@@ -2,12 +2,10 @@ package main
 
 import (
 	"flag"
-	"fmt"
 	"net"
 	"net/rpc"
 	"os"
 	"sync"
-	"time"
 	"uk.ac.bris.cs/gameoflife/util"
 
 	"uk.ac.bris.cs/gameoflife/stubs"
@@ -16,7 +14,7 @@ import (
 var turn int
 var world [][]uint8
 var mutex sync.Mutex
-var processGame bool = true
+var processGame = true
 
 func findAliveCells(world [][]byte) []util.Cell {
 	var alive []util.Cell
@@ -30,7 +28,7 @@ func findAliveCells(world [][]byte) []util.Cell {
 	return alive
 }
 
-func getNumberOfNeighbours(p stubs.Params, col, row int, worldCopy [][]uint8) uint8 {
+func getNumberOfNeighbours(p stubs.Request, col, row int, worldCopy [][]uint8) uint8 {
 	var neighbours uint8
 	for i := -1; i < 2; i++ {
 		for j := -1; j < 2; j++ {
@@ -54,7 +52,7 @@ func makeMatrix(height, width int) [][]uint8 {
 	return matrix
 }
 
-func calculateNextState(p stubs.Params, worldCopy [][]uint8) [][]byte {
+func calculateNextState(p stubs.Request, worldCopy [][]uint8) [][]byte {
 	height := p.ImageHeight
 	width := p.ImageWidth
 	newWorld := makeMatrix(height, width)
@@ -82,62 +80,35 @@ func calculateNextState(p stubs.Params, worldCopy [][]uint8) [][]byte {
 	return newWorld
 }
 
-
-// distributor divides the work between workers and interacts with other goroutines.
-//needs to stop when like something happens idk
-func distributor(req stubs.Request, res *stubs.Response) [][]uint8 {
-
-
-	world = req.InitialWorld
-	for turn < req.P.Turns && processGame {
-		mutex.Lock()
-		world = calculateNextState(req.P, world)
-		turn++
-		mutex.Unlock()
-	}
-	return world
-}
-
-
-type GameOfLifeOperation struct{}
-
-func printStats(end *chan bool){
-	ticker := time.NewTicker(5*time.Second)
-	for {
-		select {
-		case <- *end:
-			return
-		default:
-			<- ticker.C
-			fmt.Println(turn)
-			fmt.Println(len(findAliveCells(world)))
-		}
-
-	}
-
-}
-
 func resetState(req stubs.Request){
 	mutex.Lock()
 	turn = 0
-	world = makeMatrix(req.P.ImageWidth, req.P.ImageWidth)
+	world = makeMatrix(req.ImageWidth, req.ImageWidth)
 	mutex.Unlock()
 }
 
+type GameOfLifeOperation struct{}
+
 
 func (s *GameOfLifeOperation) CompleteTurn(req stubs.Request, res *stubs.Response) (err error) {
-	end := new(chan bool)
-	go printStats(end)
-	if req.P.GameStatus == "NEW"{
+
+	if req.GameStatus == "NEW"{
 		resetState(req)
 	}
+
 	processGame = true
-	res.World = distributor(req, res)
+	world = req.InitialWorld
+	for turn < req.Turns && processGame {
+		mutex.Lock()
+		world = calculateNextState(req, world)
+		turn++
+		mutex.Unlock()
+	}
+	res.World = world
 	return
 }
 
-func (s *GameOfLifeOperation) GetAliveCell(req stubs.TurnRequest, res *stubs.TurnResponse) (err error) {
-	fmt.Println("Called Alive Cells - Server")
+func (s *GameOfLifeOperation) GetAliveCell(req stubs.EmptyRequest, res *stubs.TurnResponse) (err error) {
 	mutex.Lock()
 	res.Turn = turn
 	res.CellCount = len(findAliveCells(world))
@@ -145,25 +116,22 @@ func (s *GameOfLifeOperation) GetAliveCell(req stubs.TurnRequest, res *stubs.Tur
 	return
 }
 
-func (s *GameOfLifeOperation) Shutdown(req stubs.Request, res *stubs.Response) (err error) {
+func (s *GameOfLifeOperation) Shutdown(req stubs.EmptyRequest, res *stubs.EmptyResponse) (err error) {
 	os.Exit(0)
 	return
 }
 
-func (s *GameOfLifeOperation) ResetState(req stubs.Request, res *stubs.Response) (err error) {
-	fmt.Println("STATE RSET FUNCTION CALLED????")
+func (s *GameOfLifeOperation) ResetState(req stubs.Request, res *stubs.EmptyResponse) (err error) {
 	processGame = false
 	resetState(req)
 	return
 }
 
 func main() {
-	//http.ListenAndServe("localhost:8030", nil) // this gives some error wtf
 	pAddr := flag.String("port", "8030", "Port to listen on")
 	flag.Parse()
 	rpc.Register(&GameOfLifeOperation{})
 	listener, _ := net.Listen("tcp", ":"+*pAddr)
-
 
 	defer listener.Close()
 	rpc.Accept(listener)

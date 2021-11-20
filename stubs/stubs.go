@@ -5,12 +5,13 @@ var AliveCellGetter = "GameOfLifeOperation.GetAliveCell"
 var Shutdown = "GameOfLifeOperation.Shutdown"
 var Reset = "GameOfLifeOperation.ResetState"
 
-type Params struct {
+type Request struct {
 	Turns       int
 	Threads     int
 	ImageWidth  int
 	ImageHeight int
 	GameStatus 	string
+	InitialWorld [][]byte
 }
 
 type Response struct {
@@ -25,10 +26,10 @@ type TurnResponse struct {
 	CellCount int
 }
 
-type ShutDownRequest struct {
+type EmptyRequest struct {
 }
 
-type ShutDownResponse struct {
+type EmptyResponse struct {
 }
 
 type ResetRequest struct {
@@ -37,10 +38,6 @@ type ResetRequest struct {
 type ResetResponse struct {
 }
 
-type Request struct {
-	P Params
-	InitialWorld [][]byte
-}
 
 
 

@@ -95,7 +95,7 @@ func keyPressesFunc(client *rpc.Client, keyPresses <-chan rune, finished *bool, 
 			}
 			if key == 'k' {
 				fmt.Println("Pressed K")
-				err := client.Call(stubs.Shutdown, stubs.ShutDownRequest{}, stubs.ShutDownResponse{})
+				err := client.Call(stubs.Shutdown, stubs.EmptyRequest{}, stubs.EmptyResponse{})
 				if err != nil {
 					fmt.Println(err.Error())
 				}
@@ -103,7 +103,7 @@ func keyPressesFunc(client *rpc.Client, keyPresses <-chan rune, finished *bool, 
 			}
 			if key == 'q' {
 				fmt.Println("Pressed Q")
-				err := client.Call(stubs.Reset, request, stubs.ShutDownResponse{})
+				err := client.Call(stubs.Reset, request, stubs.EmptyResponse{})
 				if err != nil {
 					fmt.Println(err.Error())
 				}
@@ -131,20 +131,16 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 
 	initialWorld := makeMatrix(p.ImageHeight, p.ImageWidth)
 	world := readPgmData(p, c, initialWorld)
-	P := stubs.Params{Turns: p.Turns, Threads: p.Threads, ImageWidth: p.ImageHeight, ImageHeight: p.ImageWidth, GameStatus: "NEW"}
-	var response *stubs.Response
-
 
 	boolean := false
 
-	request := stubs.Request{P: P, InitialWorld: world}
-	response = new(stubs.Response)
-	response.World = makeMatrix(p.ImageWidth,p.ImageHeight)
+	request := stubs.Request{Turns: p.Turns, Threads: p.Threads, ImageWidth: p.ImageHeight, ImageHeight: p.ImageWidth, GameStatus: "NEW", InitialWorld: world}
+	response := stubs.Response{World: makeMatrix(p.ImageWidth,p.ImageHeight)}
 
 	go timer(client, c, &boolean)
 	go keyPressesFunc(client, keyPresses, &boolean, request)
 
-	makeCall(client, request, response)
+	makeCall(client, request, &response)
 	boolean = true
 
 	c.events <- FinalTurnComplete{p.Turns, findAliveCells(p, response.World)}
@@ -163,8 +159,7 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 func makeCall(client *rpc.Client, req stubs.Request, res *stubs.Response) {
 	err := client.Call(stubs.TurnHandler, req, res)
 	if err != nil {
-		fmt.Println("make call oof")
-		fmt.Println(err.Error())
+		fmt.Println(err)
 	}
 
 }
@@ -172,6 +167,6 @@ func makeCall(client *rpc.Client, req stubs.Request, res *stubs.Response) {
 func getAliveCells(client *rpc.Client, req stubs.TurnRequest, res *stubs.TurnResponse) {
 	err := client.Call(stubs.AliveCellGetter, req, res)
 	if err != nil {
-		fmt.Println(err.Error())
+		fmt.Println(err)
 	}
 }
