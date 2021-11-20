@@ -71,19 +71,54 @@ func findAliveCells(p Params, world [][]uint8) []util.Cell {
 	return alive
 }
 
-func timer(client *rpc.Client, c distributorChannels, finished *bool) {
+func timer(client *rpc.Client, c distributorChannels, finish *bool) {
 	ticker := time.NewTicker(2 * time.Second)
 	turnRequest := stubs.TurnRequest{}
 	turnResponse := new(stubs.TurnResponse)
 	for {
 		<- ticker.C
 		getAliveCells(client, turnRequest, turnResponse)
-		if *finished {
+		if *finish {
 			return
 		}
 		c.events <- AliveCellsCount{turnResponse.Turn, turnResponse.CellCount}
 	}
 }
+
+func keyPressesFunc(client *rpc.Client, keyPresses <-chan rune, finished *bool, request stubs.Request){
+	for {
+		select {
+		case key := <- keyPresses:
+			if key == 's' {
+				fmt.Println("Pressed S")
+
+			}
+			if key == 'k' {
+				fmt.Println("Pressed K")
+				err := client.Call(stubs.Shutdown, stubs.ShutDownRequest{}, stubs.ShutDownResponse{})
+				if err != nil {
+					fmt.Println(err.Error())
+				}
+				return
+			}
+			if key == 'q' {
+				fmt.Println("Pressed Q")
+				err := client.Call(stubs.Reset, request, stubs.ShutDownResponse{})
+				if err != nil {
+					fmt.Println(err.Error())
+				}
+			}
+			if key == 'p' {
+				fmt.Println("Pressed P")
+			}
+		default:
+			if *finished{
+				return
+			}
+		}
+	}
+}
+
 
 
 // distributor divides the work between workers and interacts with other goroutines.
@@ -96,37 +131,21 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 
 	initialWorld := makeMatrix(p.ImageHeight, p.ImageWidth)
 	world := readPgmData(p, c, initialWorld)
-	P := stubs.Params{Turns: p.Turns, Threads: p.Threads, ImageWidth: p.ImageHeight, ImageHeight: p.ImageWidth}
+	P := stubs.Params{Turns: p.Turns, Threads: p.Threads, ImageWidth: p.ImageHeight, ImageHeight: p.ImageWidth, GameStatus: "NEW"}
 	var response *stubs.Response
 
 
-
-	//ticker := time.NewTicker(2 * time.Second)
-	//for !done {
-	//	select {
-	//	case <- ticker.C:
-	//		turnRequest := stubs.TurnRequest{}
-	//		turnResponse := new(stubs.TurnResponse)
-	//		getAliveCells(client, turnRequest, turnResponse)
-	//		c.events <- AliveCellsCount{turnResponse.Turn, turnResponse.CellCount}
-	//	default:
-	//		P := stubs.Params{Turns: p.Turns, Threads: p.Threads, ImageWidth: p.ImageHeight, ImageHeight: p.ImageWidth}
-	//		request := stubs.Request{P: P, InitialWorld: world}
-	//		response = new(stubs.Response)
-	//		makeCall(client, request, response)
-	//	}
-	//}
-
 	boolean := false
-
-	go timer(client, c, &boolean)
 
 	request := stubs.Request{P: P, InitialWorld: world}
 	response = new(stubs.Response)
+	response.World = makeMatrix(p.ImageWidth,p.ImageHeight)
+
+	go timer(client, c, &boolean)
+	go keyPressesFunc(client, keyPresses, &boolean, request)
+
 	makeCall(client, request, response)
 	boolean = true
-
-
 
 	c.events <- FinalTurnComplete{p.Turns, findAliveCells(p, response.World)}
 	writePgmData(p, c, response.World) // This line needed if out/ does not have files
@@ -142,10 +161,10 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 }
 
 func makeCall(client *rpc.Client, req stubs.Request, res *stubs.Response) {
-
 	err := client.Call(stubs.TurnHandler, req, res)
 	if err != nil {
 		fmt.Println("make call oof")
+		fmt.Println(err.Error())
 	}
 
 }
@@ -153,7 +172,6 @@ func makeCall(client *rpc.Client, req stubs.Request, res *stubs.Response) {
 func getAliveCells(client *rpc.Client, req stubs.TurnRequest, res *stubs.TurnResponse) {
 	err := client.Call(stubs.AliveCellGetter, req, res)
 	if err != nil {
-		fmt.Println("get turn oof")
 		fmt.Println(err.Error())
 	}
 }
