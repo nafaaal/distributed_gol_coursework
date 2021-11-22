@@ -145,7 +145,13 @@ func main() {
 	rpc.Register(&GameOfLifeOperation{})
 	listener, _ := net.Listen("tcp", ":"+*pAddr)
 
-	defer listener.Close()
+	defer func(listener net.Listener) {
+		err := listener.Close()
+		if err != nil {
+			fmt.Println("Error in listerner")
+		}
+	}(listener)
 	rpc.Accept(listener)
+
 }
 
