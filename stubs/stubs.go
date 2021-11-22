@@ -4,6 +4,7 @@ var TurnHandler = "GameOfLifeOperation.CompleteTurn"
 var AliveCellGetter = "GameOfLifeOperation.GetAliveCell"
 var Shutdown = "GameOfLifeOperation.Shutdown"
 var Reset = "GameOfLifeOperation.ResetState"
+var PauseAndResume = "GameOfLifeOperation.PauseAndResume"
 
 type Request struct {
 	Turns       int
@@ -24,6 +25,10 @@ type TurnRequest struct {
 type TurnResponse struct {
 	Turn int
 	CurrentWorld [][]uint8
+}
+
+type PauseRequest struct {
+	Command string
 }
 
 type EmptyRequest struct {

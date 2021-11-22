@@ -7,6 +7,7 @@ import (
 	"net/rpc"
 	"os"
 	"sync"
+	"time"
 	"uk.ac.bris.cs/gameoflife/util"
 
 	"uk.ac.bris.cs/gameoflife/stubs"
@@ -16,6 +17,8 @@ var turn int
 var world [][]uint8
 var mutex sync.Mutex
 var processGame = true
+var paused = make(chan int)
+var resume = make(chan int)
 
 func findAliveCells(world [][]byte) []util.Cell {
 	var alive []util.Cell
@@ -88,6 +91,7 @@ func resetState(req stubs.Request){
 	mutex.Unlock()
 }
 
+
 type GameOfLifeOperation struct{}
 
 
@@ -104,6 +108,13 @@ func (s *GameOfLifeOperation) CompleteTurn(req stubs.Request, res *stubs.Respons
 		world = calculateNextState(req, world)
 		turn++
 		mutex.Unlock()
+
+		select {
+		case  <- paused:
+			<-resume
+		default:
+			fmt.Println("defaulting")
+		}
 	}
 	res.World = world
 	return
@@ -119,9 +130,22 @@ func (s *GameOfLifeOperation) GetAliveCell(req stubs.EmptyRequest, res *stubs.Tu
 
 func (s *GameOfLifeOperation) Shutdown(req stubs.EmptyRequest, res *stubs.EmptyResponse) (err error) {
 	fmt.Println("Exiting...")
+	processGame = false
+	<- time.After(1*time.Second)
 	os.Exit(0)
 	return
 }
+
+func (s *GameOfLifeOperation) PauseAndResume(req stubs.PauseRequest, res *stubs.EmptyResponse) (err error) {
+	if req.Command == "PAUSE" {
+		paused <- 1
+	}
+	if req.Command == "RESUME"{
+		resume <- 1
+	}
+	return
+}
+
 
 func (s *GameOfLifeOperation) ResetState(req stubs.Request, res *stubs.EmptyResponse) (err error) {
 	processGame = false
