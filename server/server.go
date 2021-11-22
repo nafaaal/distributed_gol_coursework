@@ -8,28 +8,22 @@ import (
 	"os"
 	"sync"
 	"time"
-	"uk.ac.bris.cs/gameoflife/util"
-
 	"uk.ac.bris.cs/gameoflife/stubs"
 )
 
 var turn int
+var processGame bool
 var world [][]uint8
 var mutex sync.Mutex
-var processGame = true
 var paused = make(chan int)
 var resume = make(chan int)
 
-func findAliveCells(world [][]byte) []util.Cell {
-	var alive []util.Cell
-	for col := 0; col <len(world); col++ {
-		for row := 0; row <len(world); row++ {
-			if world[col][row] == 255 {
-				alive = append(alive, util.Cell{X: row, Y: col})
-			}
-		}
+func makeMatrix(height, width int) [][]uint8 {
+	matrix := make([][]uint8, height)
+	for i := range matrix {
+		matrix[i] = make([]uint8, width)
 	}
-	return alive
+	return matrix
 }
 
 func getNumberOfNeighbours(p stubs.Request, col, row int, worldCopy [][]uint8) uint8 {
@@ -46,14 +40,6 @@ func getNumberOfNeighbours(p stubs.Request, col, row int, worldCopy [][]uint8) u
 		}
 	}
 	return neighbours
-}
-
-func makeMatrix(height, width int) [][]uint8 {
-	matrix := make([][]uint8, height)
-	for i := range matrix {
-		matrix[i] = make([]uint8, width)
-	}
-	return matrix
 }
 
 func calculateNextState(p stubs.Request, worldCopy [][]uint8) [][]byte {
@@ -84,10 +70,11 @@ func calculateNextState(p stubs.Request, worldCopy [][]uint8) [][]byte {
 	return newWorld
 }
 
-func resetState(req stubs.Request){
+func resetState(worldSize int){
 	mutex.Lock()
 	turn = 0
-	world = makeMatrix(req.ImageWidth, req.ImageWidth)
+	processGame = true
+	world = makeMatrix(worldSize, worldSize)
 	mutex.Unlock()
 }
 
@@ -98,10 +85,9 @@ type GameOfLifeOperation struct{}
 func (s *GameOfLifeOperation) CompleteTurn(req stubs.Request, res *stubs.Response) (err error) {
 
 	if req.GameStatus == "NEW"{
-		resetState(req)
+		resetState(req.ImageWidth)
 	}
 
-	processGame = true
 	world = req.InitialWorld
 	for turn < req.Turns && processGame {
 		mutex.Lock()
@@ -113,8 +99,9 @@ func (s *GameOfLifeOperation) CompleteTurn(req stubs.Request, res *stubs.Respons
 		case  <- paused:
 			<-resume
 		default:
-			fmt.Println("defaulting")
+			break
 		}
+
 	}
 	res.World = world
 	return
@@ -147,9 +134,8 @@ func (s *GameOfLifeOperation) PauseAndResume(req stubs.PauseRequest, res *stubs.
 }
 
 
-func (s *GameOfLifeOperation) ResetState(req stubs.Request, res *stubs.EmptyResponse) (err error) {
+func (s *GameOfLifeOperation) ResetState(req stubs.ResetRequest, res *stubs.EmptyResponse) (err error) {
 	processGame = false
-	resetState(req)
 	return
 }
 

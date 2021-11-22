@@ -38,6 +38,7 @@ type EmptyResponse struct {
 }
 
 type ResetRequest struct {
+	LengthOfWorld int
 }
 
 type ResetResponse struct {

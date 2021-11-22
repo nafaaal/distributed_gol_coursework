@@ -95,7 +95,7 @@ func stateChange(client *rpc.Client, c distributorChannels, newState State){
 	c.events <- StateChange{turn, newState}
 }
 
-func keyPressesFunc(p Params, c distributorChannels, client *rpc.Client, keyPresses <-chan rune, request stubs.Request){
+func keyPressesFunc(p Params, c distributorChannels, client *rpc.Client, keyPresses <-chan rune){
 	for {
 		select {
 		case key := <- keyPresses:
@@ -104,8 +104,7 @@ func keyPressesFunc(p Params, c distributorChannels, client *rpc.Client, keyPres
 			}
 			if key == 'q' {
 				fmt.Println("Closing Client...")
-				response := stubs.EmptyResponse{}
-				err := client.Call(stubs.Reset, request, &response)
+				err := client.Call(stubs.Reset, stubs.ResetRequest{LengthOfWorld: p.ImageWidth}, &stubs.EmptyResponse{})
 				if err != nil {
 					fmt.Println(err.Error())
 				}
@@ -148,14 +147,12 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 	world := readPgmData(p, c, makeMatrix(p.ImageHeight, p.ImageWidth))
 
 	allTurnsProcessed := false
+	go timer(p, client, c, &allTurnsProcessed)
+	go keyPressesFunc(p, c, client, keyPresses)
 
 	request := stubs.Request{Turns: p.Turns, Threads: p.Threads, ImageWidth: p.ImageHeight, ImageHeight: p.ImageWidth, GameStatus: "NEW", InitialWorld: world}
 	response := stubs.Response{World: makeMatrix(p.ImageWidth,p.ImageHeight)}
 
-	go timer(p, client, c, &allTurnsProcessed)
-	go keyPressesFunc(p, c, client, keyPresses, request)
-
-	// return end status somehow, and stop this call when q is pressed.
 	makeCall(client, request, &response)
 	allTurnsProcessed = true
 
