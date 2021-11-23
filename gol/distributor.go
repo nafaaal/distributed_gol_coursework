@@ -176,8 +176,7 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 	go sdlHandler(p, c, client, initialWorld)
 
 
-
-	request := stubs.Request{Turns: p.Turns, Threads: p.Threads, ImageWidth: p.ImageHeight, ImageHeight: p.ImageWidth, GameStatus: "NEW", InitialWorld: initialWorld, Workers: []string{"54.210.9.106"}}
+	request := stubs.Request{Turns: p.Turns, Threads: p.Threads, ImageWidth: p.ImageHeight, ImageHeight: p.ImageWidth, GameStatus: "NEW", InitialWorld: initialWorld, Workers: []string{"3.86.251.41"}}
 	response := stubs.Response{World: makeMatrix(p.ImageWidth,p.ImageHeight)}
 
 	callTurn(client, request, &response)

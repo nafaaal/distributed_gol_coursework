@@ -40,9 +40,7 @@ func resetState(worldSize int){
 
 type GameOfLifeOperation struct{}
 
-func goNode(workerIP string, startHeight, endHeight, width int, currentWorld [][]uint8, results chan [][]uint8){
-	client, _ := rpc.Dial("tcp", workerIP+":8030")
-	defer client.Close()
+func goNode(client *rpc.Client, startHeight, endHeight, width int, currentWorld [][]uint8, results chan [][]uint8){
 	request := stubs.NodeRequest{StartY: startHeight, EndY: endHeight, Width: width, CurrentWorld: currentWorld}
 	response := new(stubs.NodeResponse)
 	err := client.Call(stubs.ProcessSlice, request, response)
@@ -62,15 +60,21 @@ func (s *GameOfLifeOperation) CompleteTurn(req stubs.Request, res *stubs.Respons
 
 	world = req.InitialWorld
 
+	workerChannels := make([]chan [][]uint8, len(req.Workers))
+	for i := 0; i < len(req.Workers); i++ {
+		workerChannels[i] = make(chan [][]uint8)
+	}
+
+	var clientConnections []*rpc.Client
+	for i := 0; i < len(req.Workers); i++ {
+		client, _ := rpc.Dial("tcp", req.Workers[i]+":8030")
+		defer client.Close()
+		clientConnections = append(clientConnections, client)
+	}
 
 	for turn < req.Turns && processGame {
 
 		var newPixelData [][]uint8
-
-		workerChannels := make([]chan [][]uint8, len(req.Workers))
-		for i := 0; i < len(req.Workers); i++ {
-			workerChannels[i] = make(chan [][]uint8)
-		}
 
 		for j := 0; j < len(req.Workers); j++ {
 			startHeight := workerHeight*j
@@ -78,7 +82,7 @@ func (s *GameOfLifeOperation) CompleteTurn(req stubs.Request, res *stubs.Respons
 			if j == req.Threads - 1 { // send the extra part when workerHeight is not a whole number in last iteration
 				endHeight += req.ImageHeight % len(req.Workers)
 			}
-			go goNode(req.Workers[j], startHeight, endHeight, req.ImageWidth, world, workerChannels[j])
+			go goNode(clientConnections[j], startHeight, endHeight, req.ImageWidth, world, workerChannels[j])
 		}
 
 		for k := 0; k < len(req.Workers); k++ {

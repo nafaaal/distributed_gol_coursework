@@ -69,7 +69,7 @@ func (s *Node) ProcessSlice(req stubs.NodeRequest, res *stubs.NodeResponse) (err
 
 
 func main() {
-	pAddr := flag.String("port", "8030", "Port to listen on")
+	pAddr := flag.String("port", "8081", "Port to listen on")
 	flag.Parse()
 	rpc.Register(&Node{})
 	listener, _ := net.Listen("tcp", ":"+*pAddr)
