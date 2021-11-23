@@ -95,10 +95,8 @@ func (s *GameOfLifeOperation) CompleteTurn(req stubs.Request, res *stubs.Respons
 		world = calculateNextState(req, world)
 		turn++
 
-		if req.GameStatus == "NEW" {
-			worldChannel <- world
-			turnChannel <- turn
-		}
+		worldChannel <- world
+		turnChannel <- turn
 
 		mutex.Unlock()
 

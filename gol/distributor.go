@@ -1,7 +1,6 @@
 package gol
 
 import (
-	"flag"
 	"fmt"
 	"net/rpc"
 	"strconv"
@@ -147,6 +146,7 @@ func callEvents(p Params, c distributorChannels, initial, nextState [][]uint8, t
 	c.events <- TurnComplete{turn}
 }
 
+//can bring timer inside this loop using select statements maybe
 func sdlHandler(p Params, c distributorChannels, client *rpc.Client, initialWorld [][]uint8){
 	for i :=0; i<p.Turns; i++{
 
@@ -174,16 +174,17 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 	allTurnsProcessed := false
 	go timer(p, client, c, &allTurnsProcessed)
 	go keyPressesFunc(p, c, client, keyPresses)
+	go sdlHandler(p, c, client, initialWorld)
 
-	var gameType string
-	if flag.Lookup("test.v") == nil {
-		gameType = "NEW"
-		go sdlHandler(p, c, client, initialWorld)
-	} else {
-		gameType = "TEST"
-	}
+	//var gameType string
+	//if flag.Lookup("test.v") == nil {
+	//	gameType = "NEW"
+	//	go sdlHandler(p, c, client, initialWorld)
+	//} else {
+	//	gameType = "TEST"
+	//}
 
-	request := stubs.Request{Turns: p.Turns, Threads: p.Threads, ImageWidth: p.ImageHeight, ImageHeight: p.ImageWidth, GameStatus: gameType, InitialWorld: initialWorld}
+	request := stubs.Request{Turns: p.Turns, Threads: p.Threads, ImageWidth: p.ImageHeight, ImageHeight: p.ImageWidth, GameStatus: "NEW", InitialWorld: initialWorld}
 	response := stubs.Response{World: makeMatrix(p.ImageWidth,p.ImageHeight)}
 
 
