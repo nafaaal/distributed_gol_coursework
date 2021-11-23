@@ -1,6 +1,7 @@
 package gol
 
 import (
+	"flag"
 	"fmt"
 	"net/rpc"
 	"strconv"
@@ -135,6 +136,25 @@ func keyPressesFunc(p Params, c distributorChannels, client *rpc.Client, keyPres
 	}
 }
 
+func callEvents(p Params, c distributorChannels, intial, nextstate [][]uint8, turn int){
+	for col := 0; col < p.ImageHeight; col++ {
+		for row := 0; row < p.ImageWidth; row++ {
+			if intial[col][row] != nextstate[col][row]{
+				c.events <- CellFlipped{CompletedTurns: turn, Cell: util.Cell{X: row, Y: col}}
+			}
+		}
+	}
+	c.events <- TurnComplete{turn}
+}
+
+func getWorldPerTurn(p Params, c distributorChannels, client *rpc.Client, initialWorld [][]uint8){
+	for i :=0; i<p.Turns; i++{
+		turn, newWorld := GetWorldPerTurn(client)
+		callEvents(p, c, initialWorld, newWorld, turn)
+		initialWorld = newWorld
+	}
+	return
+}
 
 
 // distributor divides the work between workers and interacts with other goroutines.
@@ -143,14 +163,24 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 	client, _ := rpc.Dial("tcp", Server)
 	defer client.Close()
 
-	world := readPgmData(p, c, makeMatrix(p.ImageHeight, p.ImageWidth))
+	initialWorld := readPgmData(p, c, makeMatrix(p.ImageHeight, p.ImageWidth))
 
 	allTurnsProcessed := false
 	go timer(p, client, c, &allTurnsProcessed)
 	go keyPressesFunc(p, c, client, keyPresses)
 
-	request := stubs.Request{Turns: p.Turns, Threads: p.Threads, ImageWidth: p.ImageHeight, ImageHeight: p.ImageWidth, GameStatus: "NEW", InitialWorld: world}
+	var gameType string
+	if flag.Lookup("test.v") == nil {
+		gameType = "NEW"
+		go getWorldPerTurn(p, c, client, initialWorld)
+	} else {
+		gameType = "TEST"
+
+	}
+
+	request := stubs.Request{Turns: p.Turns, Threads: p.Threads, ImageWidth: p.ImageHeight, ImageHeight: p.ImageWidth, GameStatus: gameType, InitialWorld: initialWorld}
 	response := stubs.Response{World: makeMatrix(p.ImageWidth,p.ImageHeight)}
+
 
 	makeCall(client, request, &response)
 	allTurnsProcessed = true
@@ -175,6 +205,17 @@ func makeCall(client *rpc.Client, req stubs.Request, res *stubs.Response) {
 	}
 
 }
+
+func GetWorldPerTurn(client *rpc.Client) (int, [][]uint8) {
+	turnRequest := stubs.EmptyRequest{}
+	turnResponse := new(stubs.TurnResponse)
+	err := client.Call(stubs.GetWorldPerTurn, turnRequest, turnResponse)
+	if err != nil {
+		fmt.Println(err)
+	}
+	return turnResponse.Turn, turnResponse.CurrentWorld
+}
+
 
 func getTurnAndWorld(client *rpc.Client) (int, [][]uint8) {
 	turnRequest := stubs.TurnRequest{}

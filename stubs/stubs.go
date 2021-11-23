@@ -5,6 +5,7 @@ var AliveCellGetter = "GameOfLifeOperation.GetAliveCell"
 var Shutdown = "GameOfLifeOperation.Shutdown"
 var Reset = "GameOfLifeOperation.ResetState"
 var PauseAndResume = "GameOfLifeOperation.PauseAndResume"
+var GetWorldPerTurn = "GameOfLifeOperation.GetWorldPerTurn"
 
 type Request struct {
 	Turns       int

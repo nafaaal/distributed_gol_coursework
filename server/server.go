@@ -18,6 +18,9 @@ var mutex sync.Mutex
 var paused = make(chan int)
 var resume = make(chan int)
 
+var turnChannel = make(chan int)
+var worldChannel = make(chan [][]uint8)
+
 func makeMatrix(height, width int) [][]uint8 {
 	matrix := make([][]uint8, height)
 	for i := range matrix {
@@ -83,16 +86,20 @@ type GameOfLifeOperation struct{}
 
 
 func (s *GameOfLifeOperation) CompleteTurn(req stubs.Request, res *stubs.Response) (err error) {
-
-	if req.GameStatus == "NEW"{
+	if req.GameStatus == "NEW" ||  req.GameStatus == "TEST" {
 		resetState(req.ImageWidth)
 	}
-
 	world = req.InitialWorld
 	for turn < req.Turns && processGame {
 		mutex.Lock()
 		world = calculateNextState(req, world)
 		turn++
+
+		if req.GameStatus == "NEW" {
+			worldChannel <- world
+			turnChannel <- turn
+		}
+
 		mutex.Unlock()
 
 		select {
@@ -139,6 +146,18 @@ func (s *GameOfLifeOperation) ResetState(req stubs.ResetRequest, res *stubs.Empt
 	return
 }
 
+func (s *GameOfLifeOperation) GetWorldPerTurn(req stubs.EmptyRequest, res *stubs.TurnResponse) (err error) {
+	for i := 0; i < 2; i++ {
+		select {
+		case turn := <- turnChannel:
+			res.Turn = turn
+		case world := <- worldChannel:
+			res.CurrentWorld = world
+		}
+	}
+	return
+}
+
 func main() {
 	pAddr := flag.String("port", "8030", "Port to listen on")
 	flag.Parse()
@@ -151,6 +170,7 @@ func main() {
 			fmt.Println("Error in listerner")
 		}
 	}(listener)
+
 	rpc.Accept(listener)
 
 }
