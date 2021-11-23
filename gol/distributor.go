@@ -76,7 +76,7 @@ func timer(p Params, client *rpc.Client, c distributorChannels, finish *bool) {
 	for {
 		<- ticker.C
 		if !(*finish) {
-			turn, world := getTurnAndWorld(client)
+			turn, world := callTurnAndWorld(client)
 			c.events <- AliveCellsCount{turn, len(findAliveCells(p, world))}
 		} else {
 			break
@@ -86,12 +86,12 @@ func timer(p Params, client *rpc.Client, c distributorChannels, finish *bool) {
 }
 
 func saveWorld(p Params, c distributorChannels, client *rpc.Client){
-	turn, world := getTurnAndWorld(client)
+	turn, world := callTurnAndWorld(client)
 	writePgmData(p, c, world, turn)
 }
 
 func stateChange(client *rpc.Client, c distributorChannels, newState State){
-	turn, _ := getTurnAndWorld(client)
+	turn, _ := callTurnAndWorld(client)
 	c.events <- StateChange{turn, newState}
 }
 
@@ -120,12 +120,12 @@ func keyPressesFunc(p Params, c distributorChannels, client *rpc.Client, keyPres
 			}
 			if key == 'p' {
 				fmt.Println("Pressed P")
-				pauseAndResume(client, stubs.PauseRequest{Command: "PAUSE"})
+				callPauseAndResume(client, stubs.PauseRequest{Command: "PAUSE"})
 				stateChange(client, c, Paused)
 				for {
 					await := <-keyPresses
 					if await == 'p' {
-						pauseAndResume(client, stubs.PauseRequest{Command: "RESUME"})
+						callPauseAndResume(client, stubs.PauseRequest{Command: "RESUME"})
 						stateChange(client, c, Executing)
 						break
 					}
@@ -179,8 +179,7 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 	request := stubs.Request{Turns: p.Turns, Threads: p.Threads, ImageWidth: p.ImageHeight, ImageHeight: p.ImageWidth, GameStatus: "NEW", InitialWorld: initialWorld}
 	response := stubs.Response{World: makeMatrix(p.ImageWidth,p.ImageHeight)}
 
-
-	makeCall(client, request, &response)
+	callTurn(client, request, &response)
 	allTurnsProcessed = true
 
 	c.events <- FinalTurnComplete{p.Turns, findAliveCells(p, response.World)}
@@ -196,16 +195,14 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 	close(c.events)
 }
 
-func makeCall(client *rpc.Client, req stubs.Request, res *stubs.Response) {
+func callTurn(client *rpc.Client, req stubs.Request, res *stubs.Response) {
 	err := client.Call(stubs.TurnHandler, req, res)
 	if err != nil {
 		fmt.Println(err)
 	}
-
 }
 
-
-func getTurnAndWorld(client *rpc.Client) (int, [][]uint8) {
+func callTurnAndWorld(client *rpc.Client) (int, [][]uint8) {
 	turnRequest := stubs.TurnRequest{}
 	turnResponse := new(stubs.TurnResponse)
 	err := client.Call(stubs.AliveCellGetter, turnRequest, turnResponse)
@@ -215,7 +212,7 @@ func getTurnAndWorld(client *rpc.Client) (int, [][]uint8) {
 	return turnResponse.Turn, turnResponse.CurrentWorld
 }
 
-func pauseAndResume(client *rpc.Client, req stubs.PauseRequest) {
+func callPauseAndResume(client *rpc.Client, req stubs.PauseRequest) {
 	err := client.Call(stubs.PauseAndResume, req, &stubs.EmptyResponse{})
 	if err != nil {
 		fmt.Println(err)
