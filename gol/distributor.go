@@ -104,7 +104,7 @@ func keyPressesFunc(p Params, c distributorChannels, client *rpc.Client, keyPres
 			}
 			if key == 'q' {
 				fmt.Println("Closing Client...")
-				err := client.Call(stubs.Reset, stubs.ResetRequest{LengthOfWorld: p.ImageWidth}, &stubs.EmptyResponse{})
+				err := client.Call(stubs.Reset, stubs.EmptyRequest{}, &stubs.EmptyResponse{})
 				if err != nil {
 					fmt.Println(err.Error())
 				}
@@ -176,7 +176,7 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 	go sdlHandler(p, c, client, initialWorld)
 
 
-	request := stubs.Request{Turns: p.Turns, Threads: p.Threads, ImageWidth: p.ImageHeight, ImageHeight: p.ImageWidth, GameStatus: "NEW", InitialWorld: initialWorld, Workers: []string{"3.86.251.41"}}
+	request := stubs.Request{Turns: p.Turns, Threads: p.Threads, ImageWidth: p.ImageHeight, ImageHeight: p.ImageWidth, GameStatus: "NEW", InitialWorld: initialWorld, Workers: []string{"localhost"}}
 	response := stubs.Response{World: makeMatrix(p.ImageWidth,p.ImageHeight)}
 
 	callTurn(client, request, &response)

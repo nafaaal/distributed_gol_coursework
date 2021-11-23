@@ -50,7 +50,6 @@ type ResetResponse struct {
 type NodeRequest struct {
 	StartY int
 	EndY int
-	//Height int
 	Width int
 	CurrentWorld [][]uint8
 }

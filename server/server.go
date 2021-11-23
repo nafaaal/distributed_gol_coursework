@@ -40,66 +40,84 @@ func resetState(worldSize int){
 
 type GameOfLifeOperation struct{}
 
-func goNode(client *rpc.Client, startHeight, endHeight, width int, currentWorld [][]uint8, results chan [][]uint8){
+func workerNode(client *rpc.Client, startHeight, endHeight, width int, currentWorld [][]uint8, results chan [][]uint8){
 	request := stubs.NodeRequest{StartY: startHeight, EndY: endHeight, Width: width, CurrentWorld: currentWorld}
 	response := new(stubs.NodeResponse)
 	err := client.Call(stubs.ProcessSlice, request, response)
 	if err != nil {
 		fmt.Println(err)
+		fmt.Println("workerNode")
 	}
 	results <- response.WorldSlice
 }
 
-
-func (s *GameOfLifeOperation) CompleteTurn(req stubs.Request, res *stubs.Response) (err error) {
-	if req.GameStatus == "NEW" ||  req.GameStatus == "TEST" {
-		resetState(req.ImageWidth)
-	}
-
+func getNextWorld(req stubs.Request, workerConnections []*rpc.Client, workerChannels []chan [][]uint8) [][]uint8 {
+	var newPixelData [][]uint8
 	workerHeight := req.ImageHeight / len(req.Workers)
 
-	world = req.InitialWorld
-
-	workerChannels := make([]chan [][]uint8, len(req.Workers))
-	for i := 0; i < len(req.Workers); i++ {
-		workerChannels[i] = make(chan [][]uint8)
+	for j := 0; j < len(req.Workers); j++ {
+		startHeight := workerHeight*j
+		endHeight :=  workerHeight*(j+1)
+		if j == len(req.Workers) - 1 { // send the extra part when workerHeight is not a whole number in last iteration
+			endHeight += req.ImageHeight % len(req.Workers)
+		}
+		go workerNode(workerConnections[j], startHeight, endHeight, req.ImageWidth, world, workerChannels[j])
 	}
 
+	for k := 0; k < len(req.Workers); k++ {
+		result := <- workerChannels[k]
+		newPixelData = append(newPixelData, result...)
+	}
+	return newPixelData
+}
+
+func makeWorkerConnectionsAndChannels(workers []string) ([]*rpc.Client, []chan [][]uint8) {
 	var clientConnections []*rpc.Client
-	for i := 0; i < len(req.Workers); i++ {
-		client, _ := rpc.Dial("tcp", req.Workers[i]+":8030")
-		defer client.Close()
+	for i := 0; i < len(workers); i++ {
+		client, _ := rpc.Dial("tcp", workers[i]+":8081")
 		clientConnections = append(clientConnections, client)
 	}
 
+	workerChannels := make([]chan [][]uint8, len(workers))
+	for i := 0; i < len(workers); i++ {
+		workerChannels[i] = make(chan [][]uint8)
+	}
+
+	return clientConnections, workerChannels
+}
+
+func closeWorkerConnections(workerConnections []*rpc.Client){
+	for _, client := range workerConnections {
+		err := client.Close()
+		if err != nil {
+			fmt.Println(err)
+		}
+	}
+}
+
+
+func (s *GameOfLifeOperation) CompleteTurn(req stubs.Request, res *stubs.Response) (err error) {
+	if req.GameStatus == "NEW" {
+		resetState(req.ImageWidth)
+	}
+
+	world = req.InitialWorld
+
+	workerConnections, workerChannels := makeWorkerConnectionsAndChannels(req.Workers)
+
 	for turn < req.Turns && processGame {
 
-		var newPixelData [][]uint8
-
-		for j := 0; j < len(req.Workers); j++ {
-			startHeight := workerHeight*j
-			endHeight :=  workerHeight*(j+1)
-			if j == req.Threads - 1 { // send the extra part when workerHeight is not a whole number in last iteration
-				endHeight += req.ImageHeight % len(req.Workers)
-			}
-			go goNode(clientConnections[j], startHeight, endHeight, req.ImageWidth, world, workerChannels[j])
-		}
-
-		for k := 0; k < len(req.Workers); k++ {
-			result := <-workerChannels[k]
-			newPixelData = append(newPixelData, result...)
-		}
+		newWorld := getNextWorld(req, workerConnections, workerChannels)
 
 		mutex.Lock()
-		world = newPixelData
+		world = newWorld
 		turn++
 		worldChannel <- world
 		turnChannel <- turn
-
 		mutex.Unlock()
 
 		select {
-		case  <- paused:
+		case <-paused:
 			<-resume
 		default:
 			break
@@ -107,6 +125,7 @@ func (s *GameOfLifeOperation) CompleteTurn(req stubs.Request, res *stubs.Respons
 
 	}
 	res.World = world
+	closeWorkerConnections(workerConnections)
 	return
 }
 
@@ -120,6 +139,7 @@ func (s *GameOfLifeOperation) GetAliveCell(req stubs.EmptyRequest, res *stubs.Tu
 
 func (s *GameOfLifeOperation) Shutdown(req stubs.EmptyRequest, res *stubs.EmptyResponse) (err error) {
 	fmt.Println("Exiting...")
+	//shutdown all the nodes aswell
 	processGame = false
 	<- time.After(1*time.Second)
 	os.Exit(0)
@@ -137,7 +157,7 @@ func (s *GameOfLifeOperation) PauseAndResume(req stubs.PauseRequest, res *stubs.
 }
 
 
-func (s *GameOfLifeOperation) ResetState(req stubs.ResetRequest, res *stubs.EmptyResponse) (err error) {
+func (s *GameOfLifeOperation) ResetState(req stubs.EmptyRequest, res *stubs.EmptyResponse) (err error) {
 	processGame = false
 	return
 }
