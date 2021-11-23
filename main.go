@@ -9,6 +9,8 @@ import (
 	"uk.ac.bris.cs/gameoflife/sdl"
 )
 
+
+
 // main is the function called when starting Game of Life with 'go run .'
 func main() {
 	runtime.LockOSThread()
@@ -43,7 +45,8 @@ func main() {
 		false,
 		"Disables the SDL window, so there is no visualisation during the tests.")
 
-	//flag.String("server", "127.0.0.1:8030", "IP:port string to connect to as server")
+	flag.StringVar(&gol.Server, "server", "127.0.0.1:8030", "IP:port string to connect to as server")
+
 	flag.Parse()
 
 	fmt.Println("Threads:", params.Threads)

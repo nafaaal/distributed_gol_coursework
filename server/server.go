@@ -5,31 +5,18 @@ import (
 	"fmt"
 	"net"
 	"net/rpc"
-
+	"os"
+	"sync"
+	"time"
 	"uk.ac.bris.cs/gameoflife/stubs"
 )
 
-func getNumberOfNeighbours(p stubs.Request, col, row int, worldCopy func(y, x int) uint8) uint8 {
-	var neighbours uint8
-	for i := -1; i < 2; i++ {
-		for j := -1; j < 2; j++ {
-			if i != 0 || j != 0 { //{i=0, j=0} is the cell you are trying to get neighbours of!
-				height := (col + p.ImageHeight + i) % p.ImageHeight
-				width := (row + p.ImageWidth + j) % p.ImageWidth
-				if worldCopy(height, width) == 255 {
-					neighbours++
-				}
-			}
-		}
-	}
-	return neighbours
-}
-
-func makeImmutableMatrix(matrix [][]uint8) func(y, x int) uint8 {
-	return func(y, x int) uint8 {
-		return matrix[y][x]
-	}
-}
+var turn int
+var processGame bool
+var world [][]uint8
+var mutex sync.Mutex
+var paused = make(chan int)
+var resume = make(chan int)
 
 func makeMatrix(height, width int) [][]uint8 {
 	matrix := make([][]uint8, height)
@@ -39,17 +26,33 @@ func makeMatrix(height, width int) [][]uint8 {
 	return matrix
 }
 
-func calculateNextState(req stubs.Request, startY, endY int, worldCopy func(y, x int) uint8) [][]byte {
-	height := endY - startY
-	width := req.ImageWidth
+func getNumberOfNeighbours(p stubs.Request, col, row int, worldCopy [][]uint8) uint8 {
+	var neighbours uint8
+	for i := -1; i < 2; i++ {
+		for j := -1; j < 2; j++ {
+			if i != 0 || j != 0 { //{i=0, j=0} is the cell you are trying to get neighbours of!
+				height := (col + p.ImageHeight + i) % p.ImageHeight
+				width := (row + p.ImageWidth + j) % p.ImageWidth
+				if worldCopy[height][width] == 255 {
+					neighbours++
+				}
+			}
+		}
+	}
+	return neighbours
+}
+
+func calculateNextState(p stubs.Request, worldCopy [][]uint8) [][]byte {
+	height := p.ImageHeight
+	width := p.ImageWidth
 	newWorld := makeMatrix(height, width)
 
 	for col := 0; col < height; col++ {
 		for row := 0; row < width; row++ {
 
 			//startY+col gets the absolute y position when there is more than 1 worker
-			n := getNumberOfNeighbours(req, startY+col, row, worldCopy)
-			currentState := worldCopy(startY+col, row)
+			n := getNumberOfNeighbours(p, col, row, worldCopy)
+			currentState := worldCopy[col][row]
 
 			if currentState == 255 {
 				if n == 2 || n == 3 {
@@ -67,56 +70,87 @@ func calculateNextState(req stubs.Request, startY, endY int, worldCopy func(y, x
 	return newWorld
 }
 
-func worker(req stubs.Request, startY, endY int, worldCopy func(y, x int) uint8, out chan<- [][]uint8) {
-	newPixelData := calculateNextState(req, startY, endY, worldCopy)
-	out <- newPixelData
+func resetState(worldSize int){
+	mutex.Lock()
+	turn = 0
+	processGame = true
+	world = makeMatrix(worldSize, worldSize)
+	mutex.Unlock()
 }
 
-func playTurn(req stubs.Request) [][]byte {
-	worldCopy := makeImmutableMatrix(req.InitialWorld)
-	var newPixelData [][]uint8
-	if req.Threads == 1 {
-		newPixelData = calculateNextState(req, 0, req.ImageHeight, worldCopy)
-	} else {
-		workerChannels := make([]chan [][]uint8, req.Threads)
-		for i := 0; i < req.Threads; i++ {
-			workerChannels[i] = make(chan [][]uint8)
-		}
-
-		workerHeight := req.ImageHeight / req.Threads
-
-		for j := 0; j < req.Threads; j++ {
-			startHeight := workerHeight * j
-			endHeight := workerHeight * (j + 1)
-			if j == req.Threads-1 { // send the extra part when workerHeight is not a whole number in last iteration
-				endHeight += req.ImageHeight % req.Threads
-			}
-			go worker(req, startHeight, endHeight, worldCopy, workerChannels[j])
-		}
-
-		for k := 0; k < req.Threads; k++ {
-			result := <-workerChannels[k]
-			newPixelData = append(newPixelData, result...)
-		}
-	}
-
-	return newPixelData
-}
 
 type GameOfLifeOperation struct{}
 
+
 func (s *GameOfLifeOperation) CompleteTurn(req stubs.Request, res *stubs.Response) (err error) {
-	res.World = playTurn(req)
-	fmt.Println("Called Complete Turn - Server")
+
+	if req.GameStatus == "NEW"{
+		resetState(req.ImageWidth)
+	}
+
+	world = req.InitialWorld
+	for turn < req.Turns && processGame {
+		mutex.Lock()
+		world = calculateNextState(req, world)
+		turn++
+		mutex.Unlock()
+
+		select {
+		case  <- paused:
+			<-resume
+		default:
+			break
+		}
+
+	}
+	res.World = world
+	return
+}
+
+func (s *GameOfLifeOperation) GetAliveCell(req stubs.EmptyRequest, res *stubs.TurnResponse) (err error) {
+	mutex.Lock()
+	res.Turn = turn
+	res.CurrentWorld = world
+	mutex.Unlock()
+	return
+}
+
+func (s *GameOfLifeOperation) Shutdown(req stubs.EmptyRequest, res *stubs.EmptyResponse) (err error) {
+	fmt.Println("Exiting...")
+	processGame = false
+	<- time.After(1*time.Second)
+	os.Exit(0)
+	return
+}
+
+func (s *GameOfLifeOperation) PauseAndResume(req stubs.PauseRequest, res *stubs.EmptyResponse) (err error) {
+	if req.Command == "PAUSE" {
+		paused <- 1
+	}
+	if req.Command == "RESUME"{
+		resume <- 1
+	}
+	return
+}
+
+
+func (s *GameOfLifeOperation) ResetState(req stubs.ResetRequest, res *stubs.EmptyResponse) (err error) {
+	processGame = false
 	return
 }
 
 func main() {
-	//http.ListenAndServe("localhost:8030", nil) // this gives some error wtf
 	pAddr := flag.String("port", "8030", "Port to listen on")
 	flag.Parse()
 	rpc.Register(&GameOfLifeOperation{})
 	listener, _ := net.Listen("tcp", ":"+*pAddr)
-	defer listener.Close()
+
+	defer func(listener net.Listener) {
+		err := listener.Close()
+		if err != nil {
+			fmt.Println("Error in listerner")
+		}
+	}(listener)
 	rpc.Accept(listener)
+
 }

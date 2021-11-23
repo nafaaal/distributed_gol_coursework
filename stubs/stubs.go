@@ -2,15 +2,49 @@ package stubs
 
 var TurnHandler = "GameOfLifeOperation.CompleteTurn"
 var AliveCellGetter = "GameOfLifeOperation.GetAliveCell"
-
-type Response struct {
-	World [][]byte
-}
+var Shutdown = "GameOfLifeOperation.Shutdown"
+var Reset = "GameOfLifeOperation.ResetState"
+var PauseAndResume = "GameOfLifeOperation.PauseAndResume"
 
 type Request struct {
-	Turns        int
-	Threads      int
-	ImageWidth   int
-	ImageHeight  int
-	InitialWorld [][]byte
+	Turns       int
+	Threads     int
+	ImageWidth  int
+	ImageHeight int
+	GameStatus 	string
+	InitialWorld [][]uint8
 }
+
+type Response struct {
+	World [][]uint8
+}
+
+type TurnRequest struct {
+}
+
+type TurnResponse struct {
+	Turn int
+	CurrentWorld [][]uint8
+}
+
+type PauseRequest struct {
+	Command string
+}
+
+type EmptyRequest struct {
+}
+
+type EmptyResponse struct {
+}
+
+type ResetRequest struct {
+	LengthOfWorld int
+}
+
+type ResetResponse struct {
+}
+
+
+
+
+
