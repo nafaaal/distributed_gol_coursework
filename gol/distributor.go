@@ -136,10 +136,10 @@ func keyPressesFunc(p Params, c distributorChannels, client *rpc.Client, keyPres
 	}
 }
 
-func callEvents(p Params, c distributorChannels, intial, nextstate [][]uint8, turn int){
+func callEvents(p Params, c distributorChannels, initial, nextState [][]uint8, turn int){
 	for col := 0; col < p.ImageHeight; col++ {
 		for row := 0; row < p.ImageWidth; row++ {
-			if intial[col][row] != nextstate[col][row]{
+			if initial[col][row] != nextState[col][row]{
 				c.events <- CellFlipped{CompletedTurns: turn, Cell: util.Cell{X: row, Y: col}}
 			}
 		}
@@ -147,11 +147,17 @@ func callEvents(p Params, c distributorChannels, intial, nextstate [][]uint8, tu
 	c.events <- TurnComplete{turn}
 }
 
-func getWorldPerTurn(p Params, c distributorChannels, client *rpc.Client, initialWorld [][]uint8){
+func sdlHandler(p Params, c distributorChannels, client *rpc.Client, initialWorld [][]uint8){
 	for i :=0; i<p.Turns; i++{
-		turn, newWorld := GetWorldPerTurn(client)
-		callEvents(p, c, initialWorld, newWorld, turn)
-		initialWorld = newWorld
+
+		response := new(stubs.TurnResponse)
+		err := client.Call(stubs.GetWorldPerTurn, stubs.EmptyRequest{}, response)
+		if err != nil {
+			fmt.Println(err)
+		}
+
+		callEvents(p, c, initialWorld, response.CurrentWorld, response.Turn)
+		initialWorld = response.CurrentWorld
 	}
 	return
 }
@@ -172,10 +178,9 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 	var gameType string
 	if flag.Lookup("test.v") == nil {
 		gameType = "NEW"
-		go getWorldPerTurn(p, c, client, initialWorld)
+		go sdlHandler(p, c, client, initialWorld)
 	} else {
 		gameType = "TEST"
-
 	}
 
 	request := stubs.Request{Turns: p.Turns, Threads: p.Threads, ImageWidth: p.ImageHeight, ImageHeight: p.ImageWidth, GameStatus: gameType, InitialWorld: initialWorld}
@@ -204,16 +209,6 @@ func makeCall(client *rpc.Client, req stubs.Request, res *stubs.Response) {
 		fmt.Println(err)
 	}
 
-}
-
-func GetWorldPerTurn(client *rpc.Client) (int, [][]uint8) {
-	turnRequest := stubs.EmptyRequest{}
-	turnResponse := new(stubs.TurnResponse)
-	err := client.Call(stubs.GetWorldPerTurn, turnRequest, turnResponse)
-	if err != nil {
-		fmt.Println(err)
-	}
-	return turnResponse.Turn, turnResponse.CurrentWorld
 }
 
 
