@@ -140,8 +140,7 @@ func keyPressesFunc(p Params, c distributorChannels, client *rpc.Client, keyPres
 // distributor divides the work between workers and interacts with other goroutines.
 func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 
-	server := "127.0.0.1:8030"
-	client, _ := rpc.Dial("tcp", server)
+	client, _ := rpc.Dial("tcp", Server)
 	defer client.Close()
 
 	world := readPgmData(p, c, makeMatrix(p.ImageHeight, p.ImageWidth))
