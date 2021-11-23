@@ -29,50 +29,6 @@ func makeMatrix(height, width int) [][]uint8 {
 	return matrix
 }
 
-func getNumberOfNeighbours(p stubs.Request, col, row int, worldCopy [][]uint8) uint8 {
-	var neighbours uint8
-	for i := -1; i < 2; i++ {
-		for j := -1; j < 2; j++ {
-			if i != 0 || j != 0 { //{i=0, j=0} is the cell you are trying to get neighbours of!
-				height := (col + p.ImageHeight + i) % p.ImageHeight
-				width := (row + p.ImageWidth + j) % p.ImageWidth
-				if worldCopy[height][width] == 255 {
-					neighbours++
-				}
-			}
-		}
-	}
-	return neighbours
-}
-
-func calculateNextState(p stubs.Request, worldCopy [][]uint8) [][]byte {
-	height := p.ImageHeight
-	width := p.ImageWidth
-	newWorld := makeMatrix(height, width)
-
-	for col := 0; col < height; col++ {
-		for row := 0; row < width; row++ {
-
-			//startY+col gets the absolute y position when there is more than 1 worker
-			n := getNumberOfNeighbours(p, col, row, worldCopy)
-			currentState := worldCopy[col][row]
-
-			if currentState == 255 {
-				if n == 2 || n == 3 {
-					newWorld[col][row] = 255
-				}
-			}
-
-			if currentState == 0 {
-				if n == 3 {
-					newWorld[col][row] = 255
-				}
-			}
-		}
-	}
-	return newWorld
-}
-
 func resetState(worldSize int){
 	mutex.Lock()
 	turn = 0
@@ -84,17 +40,55 @@ func resetState(worldSize int){
 
 type GameOfLifeOperation struct{}
 
+func goNode(workerIP string, startHeight, endHeight, width int, currentWorld [][]uint8, results chan [][]uint8){
+	client, _ := rpc.Dial("tcp", workerIP+":8030")
+	defer client.Close()
+	request := stubs.NodeRequest{StartY: startHeight, EndY: endHeight, Width: width, CurrentWorld: currentWorld}
+	response := new(stubs.NodeResponse)
+	err := client.Call(stubs.ProcessSlice, request, response)
+	if err != nil {
+		fmt.Println(err)
+	}
+	results <- response.WorldSlice
+}
+
 
 func (s *GameOfLifeOperation) CompleteTurn(req stubs.Request, res *stubs.Response) (err error) {
 	if req.GameStatus == "NEW" ||  req.GameStatus == "TEST" {
 		resetState(req.ImageWidth)
 	}
-	world = req.InitialWorld
-	for turn < req.Turns && processGame {
-		mutex.Lock()
-		world = calculateNextState(req, world)
-		turn++
 
+	workerHeight := req.ImageHeight / len(req.Workers)
+
+	world = req.InitialWorld
+
+
+	for turn < req.Turns && processGame {
+
+		var newPixelData [][]uint8
+
+		workerChannels := make([]chan [][]uint8, len(req.Workers))
+		for i := 0; i < len(req.Workers); i++ {
+			workerChannels[i] = make(chan [][]uint8)
+		}
+
+		for j := 0; j < len(req.Workers); j++ {
+			startHeight := workerHeight*j
+			endHeight :=  workerHeight*(j+1)
+			if j == req.Threads - 1 { // send the extra part when workerHeight is not a whole number in last iteration
+				endHeight += req.ImageHeight % len(req.Workers)
+			}
+			go goNode(req.Workers[j], startHeight, endHeight, req.ImageWidth, world, workerChannels[j])
+		}
+
+		for k := 0; k < len(req.Workers); k++ {
+			result := <-workerChannels[k]
+			newPixelData = append(newPixelData, result...)
+		}
+
+		mutex.Lock()
+		world = newPixelData
+		turn++
 		worldChannel <- world
 		turnChannel <- turn
 
