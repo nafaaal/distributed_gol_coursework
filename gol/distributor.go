@@ -78,6 +78,7 @@ func timer(client *rpc.Client, c distributorChannels, finish *bool) {
 		<- ticker.C
 		if !(*finish) {
 			turn, aliveCellCount := callTurnAndWorld(client)
+			fmt.Println(turn, aliveCellCount)
 			c.events <- AliveCellsCount{turn, aliveCellCount}
 		} else {
 			break
@@ -180,6 +181,7 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 	callTurn(client, request, &response)
 	allTurnsProcessed = true
 
+	//respone.world needs to be good
 	c.events <- FinalTurnComplete{p.Turns, findAliveCells(p, response.World)}
 	writePgmData(p, c, response.World, p.Turns) // This line needed if out/ does not have files
 

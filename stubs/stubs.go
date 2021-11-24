@@ -3,7 +3,7 @@ package stubs
 import "uk.ac.bris.cs/gameoflife/util"
 
 var TurnHandler = "GameOfLifeOperation.CompleteTurn"
-var AliveCellGetter = "GameOfLifeOperation.GetAliveCell"
+var AliveCellGetter = "GameOfLifeOperation.AliveCellGetter"
 var Shutdown = "GameOfLifeOperation.Shutdown"
 var Reset = "GameOfLifeOperation.ResetState"
 var PauseAndResume = "GameOfLifeOperation.PauseAndResume"

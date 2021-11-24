@@ -98,17 +98,26 @@ func flippedCells(initial, nextState [][]uint8) []util.Cell{
 
 func (s *Node) ProcessSlice(req stubs.NodeRequest, res *stubs.NodeResponse) (err error) {
 	world = req.CurrentWorld
-	fmt.Printf("First round alive cells - %d \n", findAliveCellCount(world))
-	fmt.Println(len(world))
+	//fmt.Printf("0,%d \n", findAliveCellCount(world))
+	//fmt.Println(len(world))
 	for turn := 0; turn < req.Turns; turn++{
-		fmt.Printf("%d th round alive cells - %d \n",turn, findAliveCellCount(world))
+		//fmt.Printf("%d,%d \n",turn, findAliveCellCount(world))
 		var nextWorld [][]uint8
 		nextWorld = calculateNextState(req, world)
 		mutex.Lock()
+
+		fmt.Println("1")
 		flippedCellChannels <- flippedCells(world, nextWorld)
+		fmt.Println("2")
+		temp := <- aliveCellCountChannel
+		fmt.Println(temp)
 		aliveCellCountChannel <- findAliveCellCount(nextWorld)
+		fmt.Println("3")
 		turnChannel <- turn
+		fmt.Println("4")
 		world = nextWorld
+		fmt.Println("5")
+
 		mutex.Unlock()
 	}
 	res.WorldSlice = world
@@ -134,7 +143,6 @@ func (s *Node) GetAliveCellCount(req stubs.EmptyRequest, res *stubs.AliveCellCou
 func (s *Node) GetTurn(req stubs.EmptyRequest, res *stubs.TurnResponse) (err error) {
 	select {
 	case turn := <- turnChannel:
-		fmt.Println("GET TURN NODE")
 		res.Turn = turn
 	}
 	return
