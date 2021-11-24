@@ -1,5 +1,7 @@
 package stubs
 
+import "uk.ac.bris.cs/gameoflife/util"
+
 var TurnHandler = "GameOfLifeOperation.CompleteTurn"
 var AliveCellGetter = "GameOfLifeOperation.GetAliveCell"
 var Shutdown = "GameOfLifeOperation.Shutdown"
@@ -7,6 +9,7 @@ var Reset = "GameOfLifeOperation.ResetState"
 var PauseAndResume = "GameOfLifeOperation.PauseAndResume"
 var GetWorldPerTurn = "GameOfLifeOperation.GetWorldPerTurn"
 var ProcessSlice = "Node.ProcessSlice"
+var GetWorld = "GameOfLifeOperation.GetWorld"
 
 type Request struct {
 	Turns       int
@@ -27,7 +30,12 @@ type TurnRequest struct {
 
 type TurnResponse struct {
 	Turn int
-	CurrentWorld [][]uint8
+	NumOfAliveCells int
+}
+
+type SdlResponse struct {
+	Turn int
+	AliveCells util.Cell
 }
 
 type PauseRequest struct {
@@ -57,6 +65,10 @@ type NodeRequest struct {
 
 type NodeResponse struct {
 	WorldSlice [][]uint8
+}
+
+type WorldResponse struct {
+	World [][]uint8
 }
 
 

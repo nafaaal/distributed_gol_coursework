@@ -3,12 +3,14 @@ package main
 import (
 	"flag"
 	"fmt"
+	"log"
 	"net"
 	"net/rpc"
 	"os"
 	"sync"
 	"time"
 	"uk.ac.bris.cs/gameoflife/stubs"
+	"uk.ac.bris.cs/gameoflife/util"
 )
 
 var turn int
@@ -37,6 +39,20 @@ func resetState(worldSize int){
 	mutex.Unlock()
 }
 
+func findAliveCellCount( world [][]uint8) int {
+	var length = len(world)
+	var count = 0
+	for col := 0; col < length; col++ {
+		for row := 0; row < length; row++ {
+			if world[col][row] == 255 {
+				count++
+			}
+		}
+	}
+	return count
+}
+
+
 
 type GameOfLifeOperation struct{}
 
@@ -49,11 +65,19 @@ func workerNode(client *rpc.Client, startHeight, endHeight, width int, currentWo
 		fmt.Println("workerNode")
 	}
 	results <- response.WorldSlice
+	//return
+}
+
+func timeTrack(start time.Time, name string) {
+	elapsed := time.Since(start)
+	log.Printf("%s took %s", name, elapsed)
 }
 
 func getNextWorld(req stubs.Request, workerConnections []*rpc.Client, workerChannels []chan [][]uint8) [][]uint8 {
 	var newPixelData [][]uint8
 	workerHeight := req.ImageHeight / len(req.Workers)
+
+	defer timeTrack(time.Now(), "Timer")
 
 	for j := 0; j < len(req.Workers); j++ {
 		startHeight := workerHeight*j
@@ -74,7 +98,10 @@ func getNextWorld(req stubs.Request, workerConnections []*rpc.Client, workerChan
 func makeWorkerConnectionsAndChannels(workers []string) ([]*rpc.Client, []chan [][]uint8) {
 	var clientConnections []*rpc.Client
 	for i := 0; i < len(workers); i++ {
-		client, _ := rpc.Dial("tcp", workers[i]+":8082")
+		client, errors := rpc.Dial("tcp", workers[i])
+		if errors != nil{
+			fmt.Println(errors)
+		}
 		clientConnections = append(clientConnections, client)
 	}
 
@@ -105,6 +132,8 @@ func (s *GameOfLifeOperation) CompleteTurn(req stubs.Request, res *stubs.Respons
 
 	workerConnections, workerChannels := makeWorkerConnectionsAndChannels(req.Workers)
 
+	fmt.Println(workerConnections)
+
 	for turn < req.Turns && processGame {
 
 		newWorld := getNextWorld(req, workerConnections, workerChannels)
@@ -112,8 +141,8 @@ func (s *GameOfLifeOperation) CompleteTurn(req stubs.Request, res *stubs.Respons
 		mutex.Lock()
 		world = newWorld
 		turn++
-		worldChannel <- world
-		turnChannel <- turn
+		//worldChannel <- world
+		//turnChannel <- turn
 		mutex.Unlock()
 
 		select {
@@ -132,7 +161,7 @@ func (s *GameOfLifeOperation) CompleteTurn(req stubs.Request, res *stubs.Respons
 func (s *GameOfLifeOperation) GetAliveCell(req stubs.EmptyRequest, res *stubs.TurnResponse) (err error) {
 	mutex.Lock()
 	res.Turn = turn
-	res.CurrentWorld = world
+	res.NumOfAliveCells = findAliveCellCount(world)
 	mutex.Unlock()
 	return
 }
@@ -162,20 +191,29 @@ func (s *GameOfLifeOperation) ResetState(req stubs.EmptyRequest, res *stubs.Empt
 	return
 }
 
-func (s *GameOfLifeOperation) GetWorldPerTurn(req stubs.EmptyRequest, res *stubs.TurnResponse) (err error) {
+func (s *GameOfLifeOperation) GetWorld(req stubs.EmptyRequest, res *stubs.WorldResponse) (err error) {
+	mutex.Lock()
+	res.World = world
+	mutex.Unlock()
+	return
+}
+
+//GetWorldPerTurn FUNCTION NEED TO CHANGE
+func (s *GameOfLifeOperation) GetWorldPerTurn(req stubs.EmptyRequest, res *stubs.SdlResponse) (err error) {
 	for i := 0; i < 2; i++ {
 		select {
 		case turn := <- turnChannel:
 			res.Turn = turn
 		case world := <- worldChannel:
-			res.CurrentWorld = world
+			res.AliveCells = util.Cell{0,0}
+			fmt.Println(world)// change worldchannel into cellchhannel
 		}
 	}
 	return
 }
 
 func main() {
-	pAddr := flag.String("port", "8030", "Port to listen on")
+	pAddr := flag.String("port", "8000", "Port to listen on")
 	flag.Parse()
 	rpc.Register(&GameOfLifeOperation{})
 	listener, _ := net.Listen("tcp", ":"+*pAddr)

@@ -72,13 +72,13 @@ func findAliveCells(p Params, world [][]uint8) []util.Cell {
 	return alive
 }
 
-func timer(p Params, client *rpc.Client, c distributorChannels, finish *bool) {
+func timer(client *rpc.Client, c distributorChannels, finish *bool) {
 	ticker := time.NewTicker(2 * time.Second)
 	for {
 		<- ticker.C
 		if !(*finish) {
-			turn, world := callTurnAndWorld(client)
-			c.events <- AliveCellsCount{turn, len(findAliveCells(p, world))}
+			turn, aliveCellCount := callTurnAndWorld(client)
+			c.events <- AliveCellsCount{turn, aliveCellCount}
 		} else {
 			break
 		}
@@ -87,7 +87,8 @@ func timer(p Params, client *rpc.Client, c distributorChannels, finish *bool) {
 }
 
 func saveWorld(p Params, c distributorChannels, client *rpc.Client){
-	turn, world := callTurnAndWorld(client)
+	turn, _ := callTurnAndWorld(client)
+	world := callWorld(client)
 	writePgmData(p, c, world, turn)
 }
 
@@ -150,14 +151,14 @@ func callEvents(p Params, c distributorChannels, initial, nextState [][]uint8, t
 func sdlHandler(p Params, c distributorChannels, client *rpc.Client, initialWorld [][]uint8){
 	for i :=0; i<p.Turns; i++{
 
-		response := new(stubs.TurnResponse)
+		response := new(stubs.SdlResponse)
 		err := client.Call(stubs.GetWorldPerTurn, stubs.EmptyRequest{}, response)
 		if err != nil {
 			fmt.Println(err)
 		}
 
-		callEvents(p, c, initialWorld, response.CurrentWorld, response.Turn)
-		initialWorld = response.CurrentWorld
+		//callEvents(p, c, initialWorld, response., response.Turn)
+		//initialWorld = response.CurrentWorld
 	}
 	return
 }
@@ -166,18 +167,23 @@ func sdlHandler(p Params, c distributorChannels, client *rpc.Client, initialWorl
 // distributor divides the work between workers and interacts with other goroutines.
 func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 
-	brokerAddress := "localhost:8030"
+	brokerAddress := "localhost:8000"
 	client, _ := rpc.Dial("tcp", brokerAddress)
 	defer client.Close()
 
 	initialWorld := readPgmData(p, c, makeMatrix(p.ImageHeight, p.ImageWidth))
 
 	allTurnsProcessed := false
-	go timer(p, client, c, &allTurnsProcessed)
+	go timer(client, c, &allTurnsProcessed)
 	go keyPressesFunc(p, c, client, keyPresses)
-	go sdlHandler(p, c, client, initialWorld)
+	//go sdlHandler(p, c, client, initialWorld)
 
-	nodeAddresses := strings.Split(Server, ",")
+	var nodeAddresses []string
+	for _, node := range strings.Split(Server, ",") {
+		nodeAddresses = append(nodeAddresses, node+":8031")
+	}
+	fmt.Println(nodeAddresses)
+
 	request := stubs.Request{Turns: p.Turns, Threads: p.Threads, ImageWidth: p.ImageHeight, ImageHeight: p.ImageWidth, GameStatus: "NEW", InitialWorld: initialWorld, Workers: nodeAddresses}
 	response := stubs.Response{World: makeMatrix(p.ImageWidth,p.ImageHeight)}
 
@@ -204,14 +210,14 @@ func callTurn(client *rpc.Client, req stubs.Request, res *stubs.Response) {
 	}
 }
 
-func callTurnAndWorld(client *rpc.Client) (int, [][]uint8) {
+func callTurnAndWorld(client *rpc.Client) (int, int) {
 	turnRequest := stubs.TurnRequest{}
 	turnResponse := new(stubs.TurnResponse)
 	err := client.Call(stubs.AliveCellGetter, turnRequest, turnResponse)
 	if err != nil {
 		fmt.Println(err)
 	}
-	return turnResponse.Turn, turnResponse.CurrentWorld
+	return turnResponse.Turn, turnResponse.NumOfAliveCells
 }
 
 func callPauseAndResume(client *rpc.Client, req stubs.PauseRequest) {
@@ -219,4 +225,13 @@ func callPauseAndResume(client *rpc.Client, req stubs.PauseRequest) {
 	if err != nil {
 		fmt.Println(err)
 	}
+}
+
+func callWorld(client *rpc.Client) [][]uint8 {
+	worldResponse := new(stubs.WorldResponse)
+	err := client.Call(stubs.GetWorld, stubs.EmptyRequest{}, worldResponse)
+	if err != nil {
+		fmt.Println(err)
+	}
+	return worldResponse.World
 }
