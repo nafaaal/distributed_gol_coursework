@@ -12,7 +12,7 @@ import (
 	"uk.ac.bris.cs/gameoflife/util"
 )
 
-var globalTurn int
+var turn int
 var globaWorld [][]uint8
 var globalAlive int
 var mutex sync.Mutex
@@ -32,7 +32,7 @@ func makeMatrix(height, width int) [][]uint8 {
 
 func resetState(worldSize int){
 	mutex.Lock()
-	globalTurn = 0
+	turn = 0
 	//processGame = true
 	globaWorld = makeMatrix(worldSize, worldSize)
 	mutex.Unlock()
@@ -59,12 +59,10 @@ type GameOfLifeOperation struct{}
 func workerNode(client *rpc.Client, startHeight, endHeight, width int, currentWorld [][]uint8, turns int, result chan [][]uint8){
 	request := stubs.NodeRequest{Turns: turns, StartY: startHeight, EndY: endHeight, Width: width, CurrentWorld: currentWorld}
 	response := new(stubs.NodeResponse)
-	fmt.Println("BEFORE CALL")
 	err := client.Call(stubs.ProcessSlice, request, response)
 	if err != nil {
 		fmt.Println("workerNode")
 	}
-	fmt.Println("AFTER CALL")
 	result <- response.WorldSlice
 }
 
@@ -83,6 +81,7 @@ func sendWorkers(req stubs.Request, workerConnections []*rpc.Client) [][]uint8 {
 		if j == len(req.Workers) - 1 { // send the extra part when workerHeight is not a whole number in last iteration
 			endHeight += req.ImageHeight % len(req.Workers)
 		}
+		fmt.Println(startHeight, endHeight)
 		go workerNode(workerConnections[j], startHeight, endHeight, req.ImageWidth, req.InitialWorld, req.Turns, responses[j])
 	}
 
@@ -156,40 +155,35 @@ func UpdateTurns(clients []*rpc.Client, turns int) {
 			client.Call(stubs.GetTurn, stubs.EmptyRequest{}, response)
 			//fmt.Println("turns  - "+ strconv.Itoa(response.Turn))
 		}
+
 		mutex.Lock()
+		turn = response.Turn
 		turnChannel <- response.Turn
 		mutex.Unlock()
 
 	}
 }
 
-func UpdateTurnsAndCells(clients []*rpc.Client, turns int) {
+func test(clients []*rpc.Client, turns int) {
 
 	for i := 0; i < turns; i++ {
-
 		response := new(stubs.TurnResponse)
-		err := clients[0].Call(stubs.GetTurn, stubs.EmptyRequest{}, response)
-		if err != nil {
-
-		}
-
 		var alive = 0
 		for _, client := range clients{
-			res := new(stubs.AliveCellCountResponse)
-			client.Call(stubs.GetAliveCellCount, stubs.EmptyRequest{}, res)
-			//fmt.Println("alive cells - "+ strconv.Itoa(response.Count))
-			alive += res.Count
+			client.Call(stubs.GetTurnAndAliveCell, stubs.EmptyRequest{}, response)
+			alive += response.NumOfAliveCells
 		}
-
 
 		mutex.Lock()
 		globalAlive = alive
-		globalTurn = response.Turn
-		turnChannel <- globalTurn
+		turn = response.Turn
+		turnChannel <- response.Turn
 		mutex.Unlock()
 
 	}
 }
+
+
 
 func (s *GameOfLifeOperation) CompleteTurn(req stubs.Request, res *stubs.Response) (err error) {
 	if req.GameStatus == "NEW" {
@@ -197,13 +191,15 @@ func (s *GameOfLifeOperation) CompleteTurn(req stubs.Request, res *stubs.Respons
 	}
 
 	globaWorld = req.InitialWorld
-	//globalAlive = findAliveCellCount(globaWorld)
+	globalAlive = findAliveCellCount(globaWorld)
 
 	workerConnections := makeWorkerConnectionsAndChannels(req.Workers)
 
 	go flipCellHandler(workerConnections, req.Turns)
-	go aliveCellHandler(workerConnections, req.Turns)
-	go UpdateTurns(workerConnections, req.Turns)
+	//go aliveCellHandler(workerConnections, req.Turns)
+	//go UpdateTurns(workerConnections, req.Turns)
+
+	go test(workerConnections, req.Turns)
 
 	final := sendWorkers(req, workerConnections)
 
@@ -214,7 +210,7 @@ func (s *GameOfLifeOperation) CompleteTurn(req stubs.Request, res *stubs.Respons
 
 func (s *GameOfLifeOperation) AliveCellGetter(req stubs.EmptyRequest, res *stubs.TurnResponse) (err error) {
 	mutex.Lock()
-	res.Turn = globalTurn
+	res.Turn = turn
 	res.NumOfAliveCells = globalAlive
 	mutex.Unlock()
 	return

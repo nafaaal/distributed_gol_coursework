@@ -13,6 +13,7 @@ var GetFlippedCells = "Node.GetFlippedCells"
 var GetAliveCellCount = "Node.GetAliveCellCount"
 var GetWorld = "GameOfLifeOperation.GetWorld"
 var GetTurn = "Node.GetTurn"
+var GetTurnAndAliveCell ="Node.GetTurnAndAliveCell"
 
 type Request struct {
 	Turns       int
