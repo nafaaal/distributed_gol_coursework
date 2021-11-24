@@ -48,7 +48,7 @@ func main() {
 	flag.StringVar(
 		&gol.Server,
 		"server",
-		"127.0.0.1:8030",
+		"127.0.0.1",
 		"IP:port string to connect to as server")
 
 	flag.Parse()

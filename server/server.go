@@ -74,7 +74,7 @@ func getNextWorld(req stubs.Request, workerConnections []*rpc.Client, workerChan
 func makeWorkerConnectionsAndChannels(workers []string) ([]*rpc.Client, []chan [][]uint8) {
 	var clientConnections []*rpc.Client
 	for i := 0; i < len(workers); i++ {
-		client, _ := rpc.Dial("tcp", workers[i]+":8081")
+		client, _ := rpc.Dial("tcp", workers[i]+":8082")
 		clientConnections = append(clientConnections, client)
 	}
 

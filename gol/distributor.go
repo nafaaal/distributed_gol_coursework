@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/rpc"
 	"strconv"
+	"strings"
 	"time"
 
 	"uk.ac.bris.cs/gameoflife/stubs"
@@ -165,7 +166,8 @@ func sdlHandler(p Params, c distributorChannels, client *rpc.Client, initialWorl
 // distributor divides the work between workers and interacts with other goroutines.
 func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 
-	client, _ := rpc.Dial("tcp", Server)
+	brokerAddress := "localhost:8030"
+	client, _ := rpc.Dial("tcp", brokerAddress)
 	defer client.Close()
 
 	initialWorld := readPgmData(p, c, makeMatrix(p.ImageHeight, p.ImageWidth))
@@ -175,8 +177,8 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 	go keyPressesFunc(p, c, client, keyPresses)
 	go sdlHandler(p, c, client, initialWorld)
 
-
-	request := stubs.Request{Turns: p.Turns, Threads: p.Threads, ImageWidth: p.ImageHeight, ImageHeight: p.ImageWidth, GameStatus: "NEW", InitialWorld: initialWorld, Workers: []string{"localhost"}}
+	nodeAddresses := strings.Split(Server, ",")
+	request := stubs.Request{Turns: p.Turns, Threads: p.Threads, ImageWidth: p.ImageHeight, ImageHeight: p.ImageWidth, GameStatus: "NEW", InitialWorld: initialWorld, Workers: nodeAddresses}
 	response := stubs.Response{World: makeMatrix(p.ImageWidth,p.ImageHeight)}
 
 	callTurn(client, request, &response)

@@ -14,7 +14,7 @@ type Params struct {
 func Run(p Params, events chan<- Event, keyPresses <-chan rune) {
 
 	if Server == "" { // to make test cases work
-		Server = "localhost:8030"
+		Server = "localhost"
 	}
 
 	fname := make(chan string)
