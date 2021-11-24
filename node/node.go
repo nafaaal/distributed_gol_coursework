@@ -27,12 +27,13 @@ func makeMatrix(height, width int) [][]uint8 {
 	return matrix
 }
 
-func findAliveCellCount(world [][]uint8) int {
-	var length = len(world)
+func findAliveCellCount(world [][]uint8, req stubs.NodeRequest) int {
+	height := req.EndY - req.StartY
+	width := req.Width
 	var count = 0
-	for col := 0; col < length; col++ {
-		for row := 0; row < length; row++ {
-			if world[col][row] == 255 {
+	for col := 0; col < height; col++ {
+		for row := 0; row < width; row++ {
+			if world[req.StartY+col][row] == 255 {
 				count++
 			}
 		}
@@ -98,15 +99,12 @@ func flippedCells(initial, nextState [][]uint8) []util.Cell{
 
 func (s *Node) ProcessSlice(req stubs.NodeRequest, res *stubs.NodeResponse) (err error) {
 	world = req.CurrentWorld
-	fmt.Printf("0,%d \n", findAliveCellCount(world))
-	fmt.Println(len(world))
 	for turn := 1; turn < req.Turns+1; turn++{
-		fmt.Printf("%d,%d \n",turn, findAliveCellCount(world))
 		var nextWorld [][]uint8
 		nextWorld = calculateNextState(req, world)
 		mutex.Lock()
 		flippedCellChannels <- flippedCells(world, nextWorld)
-		aliveCellCountChannel <- findAliveCellCount(nextWorld)
+		aliveCellCountChannel <- findAliveCellCount(nextWorld, req)
 		turnChannel <- turn
 		world = nextWorld
 		mutex.Unlock()
