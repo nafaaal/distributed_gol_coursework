@@ -137,17 +137,6 @@ func keyPressesFunc(p Params, c distributorChannels, client *rpc.Client, keyPres
 	}
 }
 
-//func callEvents(p Params, c distributorChannels, initial, nextState [][]uint8, turn int){
-//	for col := 0; col < p.ImageHeight; col++ {
-//		for row := 0; row < p.ImageWidth; row++ {
-//			if initial[col][row] != nextState[col][row]{
-//				c.events <- CellFlipped{CompletedTurns: turn, Cell: util.Cell{X: row, Y: col}}
-//			}
-//		}
-//	}
-//	c.events <- TurnComplete{turn}
-//}
-
 func sdlHandler(p Params, c distributorChannels, client *rpc.Client){
 
 	for i :=0; i<p.Turns; i++{
@@ -157,7 +146,7 @@ func sdlHandler(p Params, c distributorChannels, client *rpc.Client){
 			fmt.Println(err)
 		}
 
-		for _, flippedCells := range response.AliveCells{
+		for _, flippedCells := range response.FlippedCells{
 			c.events <- CellFlipped{CompletedTurns: response.Turn, Cell: flippedCells}
 		}
 		c.events <- TurnComplete{response.Turn}
@@ -184,7 +173,6 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 	for _, node := range strings.Split(Server, ",") {
 		nodeAddresses = append(nodeAddresses, node+":8031")
 	}
-	fmt.Println(nodeAddresses)
 
 	request := stubs.Request{Turns: p.Turns, Threads: p.Threads, ImageWidth: p.ImageHeight, ImageHeight: p.ImageWidth, GameStatus: "NEW", InitialWorld: initialWorld, Workers: nodeAddresses}
 	response := stubs.Response{World: makeMatrix(p.ImageWidth,p.ImageHeight)}

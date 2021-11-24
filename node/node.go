@@ -5,8 +5,17 @@ import (
 	"fmt"
 	"net"
 	"net/rpc"
+	"sync"
 	"uk.ac.bris.cs/gameoflife/stubs"
+	"uk.ac.bris.cs/gameoflife/util"
 )
+
+var world [][]uint8
+var mutex sync.Mutex
+var flippedCellChannels = make(chan []util.Cell)
+var aliveCellCountChannel = make(chan int)
+var turnChannel = make(chan int)
+
 
 type Node struct{}
 
@@ -16,6 +25,19 @@ func makeMatrix(height, width int) [][]uint8 {
 		matrix[i] = make([]uint8, width)
 	}
 	return matrix
+}
+
+func findAliveCellCount(world [][]uint8) int {
+	var length = len(world)
+	var count = 0
+	for col := 0; col < length; col++ {
+		for row := 0; row < length; row++ {
+			if world[col][row] == 255 {
+				count++
+			}
+		}
+	}
+	return count
 }
 
 func getNumberOfNeighbours(p stubs.NodeRequest, col, row int, worldCopy [][]uint8) uint8 {
@@ -34,7 +56,7 @@ func getNumberOfNeighbours(p stubs.NodeRequest, col, row int, worldCopy [][]uint
 	return neighbours
 }
 
-func calculateNextState(req stubs.NodeRequest) [][]byte {
+func calculateNextState(req stubs.NodeRequest, initialWorld [][]uint8) [][]uint8 {
 	height := req.EndY - req.StartY
 	width := req.Width
 	newWorld := makeMatrix(height, width)
@@ -43,8 +65,8 @@ func calculateNextState(req stubs.NodeRequest) [][]byte {
 		for row := 0; row < width; row++ {
 
 			//startY+col gets the absolute y position when there is more than 1 worker
-			n := getNumberOfNeighbours(req, req.StartY+col, row, req.CurrentWorld)
-			currentState := req.CurrentWorld[req.StartY+col][row]
+			n := getNumberOfNeighbours(req, req.StartY+col, row, initialWorld)
+			currentState := initialWorld[req.StartY+col][row]
 
 			if currentState == 255 {
 				if n == 2 || n == 3 {
@@ -61,9 +83,60 @@ func calculateNextState(req stubs.NodeRequest) [][]byte {
 	}
 	return newWorld
 }
+func flippedCells(initial, nextState [][]uint8) []util.Cell{
+	length := len(initial)
+	var flipped []util.Cell
+	for col := 0; col < length; col++ {
+		for row := 0; row < length; row++ {
+			if initial[col][row] != nextState[col][row]{
+				flipped = append(flipped, util.Cell{X: row, Y: col})
+			}
+		}
+	}
+	return flipped
+}
 
 func (s *Node) ProcessSlice(req stubs.NodeRequest, res *stubs.NodeResponse) (err error) {
-	res.WorldSlice = calculateNextState(req)
+	world = req.CurrentWorld
+	fmt.Printf("First round alive cells - %d \n", findAliveCellCount(world))
+	fmt.Println(len(world))
+	for turn := 0; turn < req.Turns; turn++{
+		fmt.Printf("%d th round alive cells - %d \n",turn, findAliveCellCount(world))
+		var nextWorld [][]uint8
+		nextWorld = calculateNextState(req, world)
+		mutex.Lock()
+		flippedCellChannels <- flippedCells(world, nextWorld)
+		aliveCellCountChannel <- findAliveCellCount(nextWorld)
+		turnChannel <- turn
+		world = nextWorld
+		mutex.Unlock()
+	}
+	res.WorldSlice = world
+	return
+}
+
+func (s *Node) GetFlippedCells(req stubs.EmptyRequest, res *stubs.FlippedCellResponse) (err error) {
+	select {
+	case flipped := <- flippedCellChannels:
+		res.FlippedCells = flipped
+	}
+	return
+}
+
+func (s *Node) GetAliveCellCount(req stubs.EmptyRequest, res *stubs.AliveCellCountResponse) (err error) {
+	select {
+	case count := <- aliveCellCountChannel:
+		res.Count = count
+	}
+	return
+}
+
+func (s *Node) GetTurn(req stubs.EmptyRequest, res *stubs.TurnResponse) (err error) {
+	select {
+	case turn := <- turnChannel:
+		fmt.Println("GET TURN NODE")
+		res.Turn = turn
+	}
 	return
 }
 

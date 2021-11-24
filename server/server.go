@@ -3,7 +3,6 @@ package main
 import (
 	"flag"
 	"fmt"
-	"log"
 	"net"
 	"net/rpc"
 	"os"
@@ -14,8 +13,8 @@ import (
 )
 
 var turn int
-var processGame bool
-var world [][]uint8
+var globaWorld [][]uint8
+var globalAlive int
 var mutex sync.Mutex
 var paused = make(chan int)
 var resume = make(chan int)
@@ -34,8 +33,8 @@ func makeMatrix(height, width int) [][]uint8 {
 func resetState(worldSize int){
 	mutex.Lock()
 	turn = 0
-	processGame = true
-	world = makeMatrix(worldSize, worldSize)
+	//processGame = true
+	globaWorld = makeMatrix(worldSize, worldSize)
 	mutex.Unlock()
 }
 
@@ -56,28 +55,19 @@ func findAliveCellCount( world [][]uint8) int {
 
 type GameOfLifeOperation struct{}
 
-func workerNode(client *rpc.Client, startHeight, endHeight, width int, currentWorld [][]uint8, results chan [][]uint8){
-	request := stubs.NodeRequest{StartY: startHeight, EndY: endHeight, Width: width, CurrentWorld: currentWorld}
+//need to send appropriate world slice to worker node or not
+func workerNode(client *rpc.Client, startHeight, endHeight, width int, currentWorld [][]uint8, turns int){
+	request := stubs.NodeRequest{Turns: turns, StartY: startHeight, EndY: endHeight, Width: width, CurrentWorld: currentWorld}
 	response := new(stubs.NodeResponse)
 	err := client.Call(stubs.ProcessSlice, request, response)
 	if err != nil {
-		fmt.Println(err)
 		fmt.Println("workerNode")
 	}
-	results <- response.WorldSlice
-	//return
 }
 
-func timeTrack(start time.Time, name string) {
-	elapsed := time.Since(start)
-	log.Printf("%s took %s", name, elapsed)
-}
+func sendWorkers(req stubs.Request, workerConnections []*rpc.Client)  {
 
-func getNextWorld(req stubs.Request, workerConnections []*rpc.Client, workerChannels []chan [][]uint8) [][]uint8 {
-	var newPixelData [][]uint8
 	workerHeight := req.ImageHeight / len(req.Workers)
-
-	defer timeTrack(time.Now(), "Timer")
 
 	for j := 0; j < len(req.Workers); j++ {
 		startHeight := workerHeight*j
@@ -85,17 +75,13 @@ func getNextWorld(req stubs.Request, workerConnections []*rpc.Client, workerChan
 		if j == len(req.Workers) - 1 { // send the extra part when workerHeight is not a whole number in last iteration
 			endHeight += req.ImageHeight % len(req.Workers)
 		}
-		go workerNode(workerConnections[j], startHeight, endHeight, req.ImageWidth, world, workerChannels[j])
+		fmt.Println(startHeight, endHeight)
+		//s := globaWorld[startHeight:endHeight]
+		workerNode(workerConnections[j], startHeight, endHeight, req.ImageWidth, req.InitialWorld, req.Turns)
 	}
-
-	for k := 0; k < len(req.Workers); k++ {
-		result := <- workerChannels[k]
-		newPixelData = append(newPixelData, result...)
-	}
-	return newPixelData
 }
 
-func makeWorkerConnectionsAndChannels(workers []string) ([]*rpc.Client, []chan [][]uint8) {
+func makeWorkerConnectionsAndChannels(workers []string) ([]*rpc.Client) {
 	var clientConnections []*rpc.Client
 	for i := 0; i < len(workers); i++ {
 		client, errors := rpc.Dial("tcp", workers[i])
@@ -104,13 +90,7 @@ func makeWorkerConnectionsAndChannels(workers []string) ([]*rpc.Client, []chan [
 		}
 		clientConnections = append(clientConnections, client)
 	}
-
-	workerChannels := make([]chan [][]uint8, len(workers))
-	for i := 0; i < len(workers); i++ {
-		workerChannels[i] = make(chan [][]uint8)
-	}
-
-	return clientConnections, workerChannels
+	return clientConnections
 }
 
 func closeWorkerConnections(workerConnections []*rpc.Client){
@@ -122,54 +102,78 @@ func closeWorkerConnections(workerConnections []*rpc.Client){
 	}
 }
 
-func flippedCells(initial, nextState [][]uint8) []util.Cell{
-	length := len(initial)
-	var flipped []util.Cell
-	for col := 0; col < length; col++ {
-		for row := 0; row < length; row++ {
-			if initial[col][row] != nextState[col][row]{
-				flipped = append(flipped, util.Cell{X: row, Y: col})
-			}
+
+func flipCellHandler(clients []*rpc.Client, turns int) {
+
+	for i := 0; i < turns; i++ {
+		var flippedCell []util.Cell
+		for _, client := range clients {
+			response := new(stubs.FlippedCellResponse)
+			client.Call(stubs.GetFlippedCells, stubs.EmptyRequest{}, response)
+			flippedCell = append(flippedCell, response.FlippedCells...)
 		}
+		flippedCellChannels <- flippedCell
 	}
-	return flipped
 }
 
+func aliveCellHandler(clients []*rpc.Client, turns int) {
+
+	for i := 0; i < turns; i++ {
+		var alive = 0
+		for _, client := range clients{
+			response := new(stubs.AliveCellCountResponse)
+			client.Call(stubs.GetAliveCellCount, stubs.EmptyRequest{}, response)
+			//fmt.Println("alive cells - "+ strconv.Itoa(response.Count))
+			alive += response.Count
+		}
+		mutex.Lock()
+		globalAlive = alive
+		mutex.Unlock()
+
+	}
+}
+
+func UpdateTurns(clients []*rpc.Client, turns int) {
+
+	for i := 0; i < turns; i++ {
+		response := new(stubs.TurnResponse)
+		for _, client := range clients{
+			client.Call(stubs.GetTurn, stubs.EmptyRequest{}, response)
+			//fmt.Println("turns  - "+ strconv.Itoa(response.Turn))
+		}
+		mutex.Lock()
+		turnChannel <- response.Turn
+		mutex.Unlock()
+
+	}
+}
 
 func (s *GameOfLifeOperation) CompleteTurn(req stubs.Request, res *stubs.Response) (err error) {
 	if req.GameStatus == "NEW" {
 		resetState(req.ImageWidth)
 	}
 
-	world = req.InitialWorld
+	globaWorld = req.InitialWorld
+	globalAlive = findAliveCellCount(globaWorld)
 
-	workerConnections, workerChannels := makeWorkerConnectionsAndChannels(req.Workers)
+	workerConnections := makeWorkerConnectionsAndChannels(req.Workers)
 
-	fmt.Println(workerConnections)
+	go flipCellHandler(workerConnections, req.Turns)
+	go aliveCellHandler(workerConnections, req.Turns)
+	go UpdateTurns(workerConnections, req.Turns)
 
-	for turn < req.Turns && processGame {
+	sendWorkers(req, workerConnections)
 
-		newWorld := getNextWorld(req, workerConnections, workerChannels)
 
-		mutex.Lock()
-
-		flippedCellChannels <- flippedCells(newWorld, world)
-		world = newWorld
-
-		turn++
-		turnChannel <- turn
-
-		mutex.Unlock()
-
-		select {
-		case <-paused:
-			<-resume
-		default:
-			break
-		}
-
+	select {
+	case <-paused:
+		<-resume
+	default:
+		break
 	}
-	res.World = world
+
+
+	res.World = globaWorld // function eh to get last world, same as GetWorld
 	closeWorkerConnections(workerConnections)
 	return
 }
@@ -177,7 +181,7 @@ func (s *GameOfLifeOperation) CompleteTurn(req stubs.Request, res *stubs.Respons
 func (s *GameOfLifeOperation) GetAliveCell(req stubs.EmptyRequest, res *stubs.TurnResponse) (err error) {
 	mutex.Lock()
 	res.Turn = turn
-	res.NumOfAliveCells = findAliveCellCount(world)
+	res.NumOfAliveCells = globalAlive
 	mutex.Unlock()
 	return
 }
@@ -185,7 +189,7 @@ func (s *GameOfLifeOperation) GetAliveCell(req stubs.EmptyRequest, res *stubs.Tu
 func (s *GameOfLifeOperation) Shutdown(req stubs.EmptyRequest, res *stubs.EmptyResponse) (err error) {
 	fmt.Println("Exiting...")
 	//shutdown all the nodes aswell
-	processGame = false
+	//processGame = false
 	<- time.After(1*time.Second)
 	os.Exit(0)
 	return
@@ -203,13 +207,13 @@ func (s *GameOfLifeOperation) PauseAndResume(req stubs.PauseRequest, res *stubs.
 
 
 func (s *GameOfLifeOperation) ResetState(req stubs.EmptyRequest, res *stubs.EmptyResponse) (err error) {
-	processGame = false
+	//processGame = false
 	return
 }
 
 func (s *GameOfLifeOperation) GetWorld(req stubs.EmptyRequest, res *stubs.WorldResponse) (err error) {
 	mutex.Lock()
-	res.World = world
+	res.World = globaWorld //make a function to call all nodes and get their slices and make into 1
 	mutex.Unlock()
 	return
 }
@@ -221,7 +225,7 @@ func (s *GameOfLifeOperation) GetWorldPerTurn(req stubs.EmptyRequest, res *stubs
 		case turn := <- turnChannel:
 			res.Turn = turn
 		case flipped := <- flippedCellChannels:
-			res.AliveCells = flipped
+			res.FlippedCells = flipped
 		}
 	}
 	return

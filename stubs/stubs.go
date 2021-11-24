@@ -9,7 +9,10 @@ var Reset = "GameOfLifeOperation.ResetState"
 var PauseAndResume = "GameOfLifeOperation.PauseAndResume"
 var GetWorldPerTurn = "GameOfLifeOperation.GetWorldPerTurn"
 var ProcessSlice = "Node.ProcessSlice"
+var GetFlippedCells = "Node.GetFlippedCells"
+var GetAliveCellCount = "Node.GetAliveCellCount"
 var GetWorld = "GameOfLifeOperation.GetWorld"
+var GetTurn = "Node.GetTurn"
 
 type Request struct {
 	Turns       int
@@ -35,7 +38,11 @@ type TurnResponse struct {
 
 type SdlResponse struct {
 	Turn int
-	AliveCells []util.Cell
+	FlippedCells []util.Cell
+}
+
+type FlippedCellResponse struct {
+	FlippedCells []util.Cell
 }
 
 type PauseRequest struct {
@@ -56,6 +63,7 @@ type ResetResponse struct {
 }
 
 type NodeRequest struct {
+	Turns int
 	StartY int
 	EndY int
 	Width int
@@ -69,6 +77,10 @@ type NodeResponse struct {
 
 type WorldResponse struct {
 	World [][]uint8
+}
+
+type AliveCellCountResponse struct {
+	Count int
 }
 
 
