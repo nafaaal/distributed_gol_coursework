@@ -21,7 +21,7 @@ var paused = make(chan int)
 var resume = make(chan int)
 
 var turnChannel = make(chan int)
-var worldChannel = make(chan [][]uint8)
+var flippedCellChannels = make(chan []util.Cell)
 
 func makeMatrix(height, width int) [][]uint8 {
 	matrix := make([][]uint8, height)
@@ -122,6 +122,19 @@ func closeWorkerConnections(workerConnections []*rpc.Client){
 	}
 }
 
+func flippedCells(initial, nextState [][]uint8) []util.Cell{
+	length := len(initial)
+	var flipped []util.Cell
+	for col := 0; col < length; col++ {
+		for row := 0; row < length; row++ {
+			if initial[col][row] != nextState[col][row]{
+				flipped = append(flipped, util.Cell{X: row, Y: col})
+			}
+		}
+	}
+	return flipped
+}
+
 
 func (s *GameOfLifeOperation) CompleteTurn(req stubs.Request, res *stubs.Response) (err error) {
 	if req.GameStatus == "NEW" {
@@ -139,10 +152,13 @@ func (s *GameOfLifeOperation) CompleteTurn(req stubs.Request, res *stubs.Respons
 		newWorld := getNextWorld(req, workerConnections, workerChannels)
 
 		mutex.Lock()
+
+		flippedCellChannels <- flippedCells(newWorld, world)
 		world = newWorld
+
 		turn++
-		//worldChannel <- world
-		//turnChannel <- turn
+		turnChannel <- turn
+
 		mutex.Unlock()
 
 		select {
@@ -204,9 +220,8 @@ func (s *GameOfLifeOperation) GetWorldPerTurn(req stubs.EmptyRequest, res *stubs
 		select {
 		case turn := <- turnChannel:
 			res.Turn = turn
-		case world := <- worldChannel:
-			res.AliveCells = util.Cell{0,0}
-			fmt.Println(world)// change worldchannel into cellchhannel
+		case flipped := <- flippedCellChannels:
+			res.AliveCells = flipped
 		}
 	}
 	return

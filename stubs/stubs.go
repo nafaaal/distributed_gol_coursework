@@ -35,7 +35,7 @@ type TurnResponse struct {
 
 type SdlResponse struct {
 	Turn int
-	AliveCells util.Cell
+	AliveCells []util.Cell
 }
 
 type PauseRequest struct {

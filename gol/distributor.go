@@ -137,28 +137,30 @@ func keyPressesFunc(p Params, c distributorChannels, client *rpc.Client, keyPres
 	}
 }
 
-func callEvents(p Params, c distributorChannels, initial, nextState [][]uint8, turn int){
-	for col := 0; col < p.ImageHeight; col++ {
-		for row := 0; row < p.ImageWidth; row++ {
-			if initial[col][row] != nextState[col][row]{
-				c.events <- CellFlipped{CompletedTurns: turn, Cell: util.Cell{X: row, Y: col}}
-			}
-		}
-	}
-	c.events <- TurnComplete{turn}
-}
+//func callEvents(p Params, c distributorChannels, initial, nextState [][]uint8, turn int){
+//	for col := 0; col < p.ImageHeight; col++ {
+//		for row := 0; row < p.ImageWidth; row++ {
+//			if initial[col][row] != nextState[col][row]{
+//				c.events <- CellFlipped{CompletedTurns: turn, Cell: util.Cell{X: row, Y: col}}
+//			}
+//		}
+//	}
+//	c.events <- TurnComplete{turn}
+//}
 
-func sdlHandler(p Params, c distributorChannels, client *rpc.Client, initialWorld [][]uint8){
+func sdlHandler(p Params, c distributorChannels, client *rpc.Client){
+
 	for i :=0; i<p.Turns; i++{
-
 		response := new(stubs.SdlResponse)
 		err := client.Call(stubs.GetWorldPerTurn, stubs.EmptyRequest{}, response)
 		if err != nil {
 			fmt.Println(err)
 		}
 
-		//callEvents(p, c, initialWorld, response., response.Turn)
-		//initialWorld = response.CurrentWorld
+		for _, flippedCells := range response.AliveCells{
+			c.events <- CellFlipped{CompletedTurns: response.Turn, Cell: flippedCells}
+		}
+		c.events <- TurnComplete{response.Turn}
 	}
 	return
 }
@@ -176,7 +178,7 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 	allTurnsProcessed := false
 	go timer(client, c, &allTurnsProcessed)
 	go keyPressesFunc(p, c, client, keyPresses)
-	//go sdlHandler(p, c, client, initialWorld)
+	go sdlHandler(p, c, client)
 
 	var nodeAddresses []string
 	for _, node := range strings.Split(Server, ",") {
