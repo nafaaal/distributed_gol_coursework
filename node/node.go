@@ -15,6 +15,9 @@ var mutex sync.Mutex
 var flippedCellChannels = make(chan []util.Cell)
 var aliveCellCountChannel = make(chan int)
 var turnChannel = make(chan int)
+var first_halo_channel = make(chan []uint8)
+var last_halo_channel = make(chan []uint8)
+var in_halo = make(chan *stubs.HaloResponse)
 
 
 type Node struct{}
@@ -59,7 +62,7 @@ func getNumberOfNeighbours(p stubs.NodeRequest, col, row int, worldCopy [][]uint
 	for i := -1; i < 2; i++ {
 		for j := -1; j < 2; j++ {
 			if i != 0 || j != 0 { //{i=0, j=0} is the cell you are trying to get neighbours of!
-				height := (col + p.Width + i) % p.Width // NEED TO CHANGE to height
+				height := (col + p.EndY-p.StartY + i) % p.Width
 				width := (row + p.Width + j) % p.Width
 				if worldCopy[height][width] == 255 {
 					neighbours++
@@ -78,23 +81,22 @@ func calculateNextState(req stubs.NodeRequest, initialWorld [][]uint8) [][]uint8
 	newWorld := makeMatrix(height, width)
 
 	fmt.Printf("HEIGHT IS - %d\n", height)
-	for col := 0; col < height; col++ {
+	fmt.Printf("WIDTH IS - %d\n", width)
+	for col := 1; col < height-1; col++ {
 		for row := 0; row < width; row++ {
 
-			//startY+col gets the absolute y position when there is more than 1 worker
-			//fmt.Println(col)
 			n := getNumberOfNeighbours(req, col, row, initialWorld)
 			currentState := initialWorld[col][row]
 
 			if currentState == 255 {
 				if n == 2 || n == 3 {
-					newWorld[col][row] = 255
+					newWorld[col-1][row] = 255
 				}
 			}
 
 			if currentState == 0 {
 				if n == 3 {
-					newWorld[col][row] = 255
+					newWorld[col-1][row] = 255
 				}
 			}
 		}
@@ -119,12 +121,23 @@ func (s *Node) ProcessSlice(req stubs.NodeRequest, res *stubs.NodeResponse) (err
 	world = req.CurrentWorld
 	for turn := 1; turn < req.Turns+1; turn++{
 		var nextWorld [][]uint8
-		nextWorld = calculateNextState(req, world)
+		var neighboursWorld [][]uint8
+		select {
+		case halo := <- in_halo:
+			neighboursWorld = append(neighboursWorld, halo.FirstHalo)
+			neighboursWorld = append(neighboursWorld, world...)
+			neighboursWorld = append(neighboursWorld, halo.LastHalo)
+		}
+		nextWorld = calculateNextState(req, neighboursWorld)
+
 		mutex.Lock()
 		flippedCellChannels <- flippedCells(world, nextWorld)
 		aliveCellCountChannel <- findAliveCellCount(nextWorld)
+		first_halo_channel <- nextWorld[0]
+		last_halo_channel <- nextWorld[len(world)-1]
 		turnChannel <- turn
 		world = nextWorld
+
 		mutex.Unlock()
 	}
 	res.WorldSlice = world
@@ -167,6 +180,25 @@ func (s *Node) GetTurnAndAliveCell(req stubs.EmptyRequest, res *stubs.TurnRespon
 	}
 	return
 }
+
+func (s *Node) GetHaloRegions(req stubs.EmptyRequest, res *stubs.HaloResponse) (err error) {
+	for i := 0; i<2; i++ {
+		select {
+		case first := <- first_halo_channel:
+			res.FirstHalo = first
+		case last := <- last_halo_channel:
+			res.LastHalo = last
+		}
+	}
+	return
+}
+
+
+func (s *Node) ReceiveHaloRegions(req stubs.EmptyRequest, res *stubs.HaloResponse) (err error) {
+	in_halo <- res
+	return
+}
+
 
 func main() {
 	pAddr := flag.String("port", "8030", "Port to listen on")

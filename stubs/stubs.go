@@ -14,6 +14,8 @@ var GetAliveCellCount = "Node.GetAliveCellCount"
 var GetWorld = "GameOfLifeOperation.GetWorld"
 var GetTurn = "Node.GetTurn"
 var GetTurnAndAliveCell ="Node.GetTurnAndAliveCell"
+var GetHaloRegions = "Node.GetHaloRegions"
+var ReceiveHaloRegions = "Node.ReceiveHaloRegions"
 
 type Request struct {
 	Turns       int
@@ -82,6 +84,11 @@ type WorldResponse struct {
 
 type AliveCellCountResponse struct {
 	Count int
+}
+
+type HaloResponse struct {
+	FirstHalo []uint8
+	LastHalo []uint8
 }
 
 
