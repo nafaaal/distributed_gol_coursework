@@ -174,7 +174,8 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 	//	nodeAddresses = append(nodeAddresses, node+":8030")
 
 
-	 var testNodes = []string{"localhost:8000","localhost:8001"}
+	//var testNodes = []string{"localhost:8000","localhost:8001"}
+	var testNodes = []string{"localhost:8000"}
 
 	request := stubs.Request{Turns: p.Turns, Threads: p.Threads, ImageWidth: p.ImageHeight, ImageHeight: p.ImageWidth, GameStatus: "NEW", InitialWorld: initialWorld, Workers: testNodes}
 	response := stubs.Response{World: makeMatrix(p.ImageWidth,p.ImageHeight)}

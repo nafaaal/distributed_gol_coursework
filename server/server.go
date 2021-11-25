@@ -129,57 +129,23 @@ func flipCellHandler(clients []*rpc.Client, turns int) {
 	}
 }
 
-func aliveCellHandler(clients []*rpc.Client, turns int) {
-
-	for i := 0; i < turns; i++ {
-		var alive = 0
-		for _, client := range clients{
-			response := new(stubs.AliveCellCountResponse)
-			client.Call(stubs.GetAliveCellCount, stubs.EmptyRequest{}, response)
-			//fmt.Println("alive cells - "+ strconv.Itoa(response.Count))
-			alive += response.Count
-		}
-		mutex.Lock()
-		globalAlive = alive
-		mutex.Unlock()
-
-	}
-}
-
-func UpdateTurns(clients []*rpc.Client, turns int) {
-
-	for i := 0; i < turns; i++ {
-		response := new(stubs.TurnResponse)
-		for _, client := range clients{
-			client.Call(stubs.GetTurn, stubs.EmptyRequest{}, response)
-			//fmt.Println("turns  - "+ strconv.Itoa(response.Turn))
-		}
-
-		mutex.Lock()
-		turn = response.Turn
-		turnChannel <- response.Turn
-		mutex.Unlock()
-
-	}
-}
-
-func firstHalo(clients []*rpc.Client, req [][]uint8) {
+func firstHalo(clients []*rpc.Client, world [][]uint8) {
 
 	numOfHalo := len(clients)-1
 	for index, client := range clients{
-		var temp1, temp2 []uint8
+		var topHalo, bottomHalo []uint8
 		if index == 0 {
-			temp1 = req[numOfHalo]
-			temp2 = req[1]
-		} else if index == len(clients)-1 {
-			temp1 = req[numOfHalo-1]
-			temp2 =  req[0]
+			topHalo = world[numOfHalo]
+			bottomHalo = world[1]
+		} else if index == numOfHalo {
+			topHalo = world[numOfHalo-1]
+			bottomHalo =  world[0]
 		} else {
-			temp1 = req[index-1]
-			temp2 =	req[index+1]
+			topHalo = world[index-1]
+			bottomHalo =	world[index+1]
 		}
 		//fmt.Println("Send Halo")
-		client.Call(stubs.ReceiveHaloRegions, stubs.HaloResponse{FirstHalo: temp1, LastHalo: temp2}, &stubs.EmptyResponse{})
+		client.Call(stubs.ReceiveHaloRegions, stubs.HaloResponse{FirstHalo: topHalo, LastHalo: bottomHalo}, &stubs.EmptyResponse{})
 	}
 }
 
@@ -188,7 +154,7 @@ func getHalo(clients []*rpc.Client, turns int) {
 	var haloResponses []*stubs.HaloResponse
 	for i := 0; i < turns; i++ {
 		response := new(stubs.HaloResponse)
-		for _, client := range clients{
+		for _, client := range clients {
 			err := client.Call(stubs.GetHaloRegions, stubs.EmptyRequest{}, response)
 			if err != nil {
 				//fmt.Println("GET HALO BROKEN")
@@ -204,23 +170,31 @@ func getHalo(clients []*rpc.Client, turns int) {
 	}
 }
 
+// first send the halo regions before game starts
+// takes the halos and stitches it to current world
+// need to return the new halo regions -> which are the newworld ge bai thah
+//repeat from 2
 func sendHalo(clients []*rpc.Client, turns int) {
-
 	for i := 0; i < turns; i++ {
 		select {
 		case sendback := <-inHaloChannel:
 			size := len(sendback)-1
 			for index, client := range clients {
 				var temp1, temp2 []uint8
-				if index == 0 {
+				if len(clients) == 1{
 					temp1 = sendback[size].LastHalo
-					temp2 = sendback[1].FirstHalo
-				} else if index == len(clients)-1 {
-					temp1 = sendback[size-1].FirstHalo
-					temp2 = sendback[0].FirstHalo
+					temp2 = sendback[size].FirstHalo
 				} else {
-					temp1 = sendback[index-1].LastHalo
-					temp2 = sendback[index+1].FirstHalo
+					if index == 0 {
+						temp1 = sendback[size].LastHalo
+						temp2 = sendback[1].FirstHalo
+					} else if index == len(clients)-1 {
+						temp1 = sendback[size-1].FirstHalo
+						temp2 = sendback[0].FirstHalo
+					} else {
+						temp1 = sendback[index-1].LastHalo
+						temp2 = sendback[index+1].FirstHalo
+					}
 				}
 				err := client.Call(stubs.ReceiveHaloRegions,  stubs.HaloResponse{FirstHalo: temp1, LastHalo: temp2}, &stubs.EmptyResponse{})
 				if err != nil {
@@ -233,7 +207,7 @@ func sendHalo(clients []*rpc.Client, turns int) {
 }
 
 
-func test(clients []*rpc.Client, turns int) {
+func getTurnsAndCellCount(clients []*rpc.Client, turns int) {
 
 	for i := 0; i < turns; i++ {
 		response := new(stubs.TurnResponse)
@@ -267,9 +241,8 @@ func (s *GameOfLifeOperation) CompleteTurn(req stubs.Request, res *stubs.Respons
 	workerConnections := makeWorkerConnectionsAndChannels(req.Workers)
 
 	go flipCellHandler(workerConnections, req.Turns)
-	//go aliveCellHandler(workerConnections, req.Turns)
-	//go UpdateTurns(workerConnections, req.Turns)
-	go test(workerConnections, req.Turns)
+
+	go getTurnsAndCellCount(workerConnections, req.Turns)
 
 	world := req.InitialWorld
 	go firstHalo(workerConnections, world)

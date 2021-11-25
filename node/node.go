@@ -81,9 +81,8 @@ func makeImmutableMatrix(matrix [][]uint8) func(y, x int) uint8 {
 	}
 }
 
+
 func calculateNextState(req stubs.NodeRequest, initialWorld [][]uint8) [][]uint8 {
-	//height := req.EndY - req.StartY
-	//width := req.Width
 	height := len(req.CurrentWorld)
 	width := len(req.CurrentWorld[0])
 	newWorld := makeMatrix(height, width)           //original slice size
@@ -112,13 +111,14 @@ func calculateNextState(req stubs.NodeRequest, initialWorld [][]uint8) [][]uint8
 	fmt.Println("newworld returned")
 	return newWorld
 }
-func flippedCells(initial, nextState [][]uint8) []util.Cell {
+func flippedCells(req stubs.NodeRequest, initial, nextState [][]uint8) []util.Cell {
 	length := len(initial)
+	height := len(initial[0])
 	var flipped []util.Cell
 	for col := 0; col < length; col++ {
-		for row := 0; row < length; row++ {
+		for row := 0; row < height; row++ {
 			if initial[col][row] != nextState[col][row] {
-				flipped = append(flipped, util.Cell{X: row, Y: col})
+				flipped = append(flipped, util.Cell{X: row, Y: req.StartY+col})
 			}
 		}
 	}
@@ -146,7 +146,7 @@ func (s *Node) ProcessSlice(req stubs.NodeRequest, res *stubs.NodeResponse) (err
 
 		mutex.Lock()
 		// fmt.Println("1")
-		flippedCellChannels <- flippedCells(world, nextWorld)
+		flippedCellChannels <- flippedCells(req, world, nextWorld)
 		// fmt.Println("2")
 		aliveCellCountChannel <- findAliveCellCount(nextWorld)
 		// fmt.Println("3")
@@ -212,7 +212,18 @@ func (s *Node) GetHaloRegions(req stubs.EmptyRequest, res *stubs.HaloResponse) (
 	return
 }
 
+func testfunc(arr []uint8) int {
+	count := 0
+	for _, i := range arr {
+		if i>0{
+			count++
+		}
+	}
+	return count
+}
+
 func (s *Node) ReceiveHaloRegions(req stubs.HaloResponse, res *stubs.EmptyResponse) (err error) {
+	fmt.Printf("First halo - alive %d, Second halo - alive %d\n", testfunc(req.FirstHalo), testfunc(req.LastHalo))
 	inHalo <- req
 	return
 }
