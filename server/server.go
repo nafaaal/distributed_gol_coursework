@@ -82,7 +82,9 @@ func sendWorkers(req stubs.Request, workerConnections []*rpc.Client) [][]uint8 {
 			endHeight += req.ImageHeight % len(req.Workers)
 		}
 		fmt.Println(startHeight, endHeight)
-		go workerNode(workerConnections[j], startHeight, endHeight, req.ImageWidth, req.InitialWorld, req.Turns, responses[j])
+		relevantSlice := req.InitialWorld[startHeight:endHeight]
+		//fmt.Println(len(relevantSlice))
+		go workerNode(workerConnections[j], startHeight, endHeight, req.ImageWidth, relevantSlice, req.Turns, responses[j])
 	}
 
 

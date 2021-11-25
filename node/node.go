@@ -71,16 +71,18 @@ func getNumberOfNeighbours(p stubs.NodeRequest, col, row int, worldCopy [][]uint
 }
 
 func calculateNextState(req stubs.NodeRequest, initialWorld [][]uint8) [][]uint8 {
-	height := req.EndY - req.StartY
-	width := req.Width
+	//height := req.EndY - req.StartY
+	//width := req.Width
+	height := len(req.CurrentWorld)
+	width := len(req.CurrentWorld[0])
 	newWorld := makeMatrix(height, width)
 
 	for col := 0; col < height; col++ {
 		for row := 0; row < width; row++ {
 
 			//startY+col gets the absolute y position when there is more than 1 worker
-			n := getNumberOfNeighbours(req, req.StartY+col, row, initialWorld)
-			currentState := initialWorld[req.StartY+col][row]
+			n := getNumberOfNeighbours(req, col, row, initialWorld)
+			currentState := initialWorld[col][row]
 
 			if currentState == 255 {
 				if n == 2 || n == 3 {
@@ -110,6 +112,7 @@ func flippedCells(initial, nextState [][]uint8) []util.Cell{
 	return flipped
 }
 
+//ProcessSlice treat slice as the whole world?
 func (s *Node) ProcessSlice(req stubs.NodeRequest, res *stubs.NodeResponse) (err error) {
 	world = req.CurrentWorld
 	for turn := 1; turn < req.Turns+1; turn++{
