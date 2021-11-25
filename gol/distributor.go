@@ -158,7 +158,7 @@ func sdlHandler(p Params, c distributorChannels, client *rpc.Client){
 // distributor divides the work between workers and interacts with other goroutines.
 func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 
-	brokerAddress := "localhost:8000"
+	brokerAddress := "localhost:8003"
 	client, _ := rpc.Dial("tcp", brokerAddress)
 	defer client.Close()
 
@@ -172,7 +172,7 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 	//var nodeAddresses []string
 	//for _, node := range strings.Split(Server, ",") {
 	//	nodeAddresses = append(nodeAddresses, node+":8030")
-	
+
 
 	 var testNodes = []string{"localhost:8000","localhost:8001"}
 

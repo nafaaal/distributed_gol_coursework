@@ -57,15 +57,15 @@ func findAliveCellCount(world [][]uint8) int {
 	return count
 }
 
-func getNumberOfNeighbours(p stubs.NodeRequest, col, row int, worldCopy [][]uint8) uint8 {
+func getNumberOfNeighbours(p stubs.NodeRequest, col, row int, worldCopy func(y, x int) uint8) uint8 {
 	var neighbours uint8
 	for i := -1; i < 2; i++ {
 		for j := -1; j < 2; j++ {
 			if i != 0 || j != 0 { //{i=0, j=0} is the cell you are trying to get neighbours of!
 				height := (col + p.EndY-p.StartY + i) % (p.EndY-p.StartY)
 				width := (row + p.Width + j) % p.Width
-				//fmt.Printf("Height inside neighbours = %d,  endy-starty = %d\n", height , p.EndY-p.StartY )
-				if worldCopy[height][width] == 255 {
+				fmt.Printf("Height inside neighbours = %d,  endy-starty = %d\n", height , p.EndY-p.StartY )
+				if worldCopy(height, width) == 255 {
 					neighbours++
 				}
 			}
@@ -74,12 +74,19 @@ func getNumberOfNeighbours(p stubs.NodeRequest, col, row int, worldCopy [][]uint
 	return neighbours
 }
 
+func makeImmutableMatrix(matrix [][]uint8) func(y, x int) uint8 {
+	return func(y, x int) uint8 {
+		return matrix[y][x]
+	}
+}
+
 func calculateNextState(req stubs.NodeRequest, initialWorld [][]uint8) [][]uint8 {
 	//height := req.EndY - req.StartY
 	//width := req.Width
 	height := len(req.CurrentWorld)
 	width := len(req.CurrentWorld[0])
-	newWorld := makeMatrix(height, width)
+	newWorld := makeMatrix(height, width) //original slice size
+	neighbours := makeImmutableMatrix(initialWorld) // the one with halo
 
 	fmt.Printf("HEIGHT IS - %d\n", height)
 	fmt.Printf("WIDTH IS - %d\n", width)
@@ -87,7 +94,7 @@ func calculateNextState(req stubs.NodeRequest, initialWorld [][]uint8) [][]uint8
 		for row := 0; row < width; row++ {
 
 			//fmt.Printf("len of initial world inside calculate next step- %d", len(initialWorld))
-			n := getNumberOfNeighbours(req, col, row, initialWorld)
+			n := getNumberOfNeighbours(req, col, row, neighbours)
 			currentState := initialWorld[col][row]
 
 			if currentState == 255 {
@@ -131,9 +138,13 @@ func (s *Node) ProcessSlice(req stubs.NodeRequest, res *stubs.NodeResponse) (err
 			neighboursWorld = append(neighboursWorld, halo.FirstHalo)
 			neighboursWorld = append(neighboursWorld, world...)
 			neighboursWorld = append(neighboursWorld, halo.LastHalo)
-		default:
-			neighboursWorld = append(neighboursWorld, world...)
+		//default:
+		//	neighboursWorld = append(neighboursWorld, world...)
 		}
+
+		fmt.Println("HUHUHUHUHUHUh")
+		fmt.Println(len(neighboursWorld))
+		
 		nextWorld = calculateNextState(req, neighboursWorld)
 
 		mutex.Lock()

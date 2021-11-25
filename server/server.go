@@ -63,7 +63,7 @@ func workerNode(client *rpc.Client, startHeight, endHeight, width int, currentWo
 	response := new(stubs.NodeResponse)
 	err := client.Call(stubs.ProcessSlice, request, response)
 	if err != nil {
-		fmt.Println("workerNode")
+		fmt.Println("Could not call worker node")
 	}
 	result <- response.WorldSlice
 }
@@ -84,6 +84,7 @@ func sendWorkers(req stubs.Request, workerConnections []*rpc.Client) [][]uint8 {
 			endHeight += req.ImageHeight % len(req.Workers)
 		}
 		fmt.Println(startHeight, endHeight)
+
 		relevantSlice := req.InitialWorld[startHeight:endHeight]
 
 		//fmt.Println(len(relevantSlice))
@@ -175,16 +176,19 @@ func getHalo(clients []*rpc.Client, turns int) {
 	var haloResponses []*stubs.HaloResponse
 	for i := 0; i < turns; i++ {
 		response := new(stubs.HaloResponse)
-		for _, client := range clients{
-			client.Call(stubs.GetHaloRegions, stubs.EmptyRequest{}, response)
+		for index, client := range clients{
+			err := client.Call(stubs.GetHaloRegions, stubs.EmptyRequest{}, response)
+			if err != nil {
+				fmt.Println("GET HALO BROKEN")
+				return
+			}
 			haloResponses = append(haloResponses, response)
-			fmt.Println("GOT HALO RESPONSE")
+			fmt.Printf("GOT HALO RESPONSE from client %d- ", index)
 		}
-		fmt.Println("OUT OF FOR LOOP")
+		fmt.Println("\nGot all halos from all clients")
 		go sendHalo(clients, turns)
 		inHaloChannel <- haloResponses
-		fmt.Println("PASSED HALO RESPONSE DOWN CHANNEl")
-
+		fmt.Println("Passed all halos down channel")
 	}
 }
 
@@ -194,9 +198,9 @@ func sendHalo(clients []*rpc.Client, turns int) {
 		var halo stubs.HaloResponse
 		select {
 		case sendback := <-inHaloChannel:
-			fmt.Println("HALO RECIENCEDDD")
+			fmt.Println("\nCollected from halo channel")
 			size := len(sendback)-1
-			for index, client := range clients{
+			for index, client := range clients {
 				if index == 0 {
 					halo.FirstHalo = sendback[size].LastHalo
 					halo.LastHalo = sendback[1].FirstHalo
@@ -207,8 +211,12 @@ func sendHalo(clients []*rpc.Client, turns int) {
 					halo.FirstHalo = sendback[index-1].LastHalo
 					halo.LastHalo = sendback[index+1].FirstHalo
 				}
-				fmt.Println("Send Halo")
-				client.Call(stubs.ReceiveHaloRegions, stubs.EmptyRequest{}, halo)
+				fmt.Println("Send Halo back to node")
+				err := client.Call(stubs.ReceiveHaloRegions, stubs.EmptyRequest{}, halo)
+				if err != nil {
+					fmt.Println("Couldt not send halo back to node\n")
+					return
+				}
 			}
 		}
 	}
@@ -335,7 +343,7 @@ func (s *GameOfLifeOperation) GetWorldPerTurn(req stubs.EmptyRequest, res *stubs
 }
 
 func main() {
-	pAddr := flag.String("port", "8000", "Port to listen on")
+	pAddr := flag.String("port", "8003", "Port to listen on")
 	flag.Parse()
 	rpc.Register(&GameOfLifeOperation{})
 	listener, _ := net.Listen("tcp", ":"+*pAddr)
