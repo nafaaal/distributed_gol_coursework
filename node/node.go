@@ -64,7 +64,7 @@ func getNumberOfNeighbours(p stubs.NodeRequest, col, row int, worldCopy [][]uint
 			if i != 0 || j != 0 { //{i=0, j=0} is the cell you are trying to get neighbours of!
 				height := (col + p.EndY-p.StartY + i) % (p.EndY-p.StartY)
 				width := (row + p.Width + j) % p.Width
-				fmt.Printf("Height inside neighbours = %d,  endy-starty = %d\n", height , p.EndY-p.StartY )
+				//fmt.Printf("Height inside neighbours = %d,  endy-starty = %d\n", height , p.EndY-p.StartY )
 				if worldCopy[height][width] == 255 {
 					neighbours++
 				}
@@ -86,6 +86,7 @@ func calculateNextState(req stubs.NodeRequest, initialWorld [][]uint8) [][]uint8
 	for col := 1; col < height-1; col++ {
 		for row := 0; row < width; row++ {
 
+			//fmt.Printf("len of initial world inside calculate next step- %d", len(initialWorld))
 			n := getNumberOfNeighbours(req, col, row, initialWorld)
 			currentState := initialWorld[col][row]
 
@@ -102,6 +103,7 @@ func calculateNextState(req stubs.NodeRequest, initialWorld [][]uint8) [][]uint8
 			}
 		}
 	}
+	fmt.Println("newworld returned")
 	return newWorld
 }
 func flippedCells(initial, nextState [][]uint8) []util.Cell{
@@ -123,19 +125,28 @@ func (s *Node) ProcessSlice(req stubs.NodeRequest, res *stubs.NodeResponse) (err
 	for turn := 1; turn < req.Turns+1; turn++{
 		var nextWorld [][]uint8
 		var neighboursWorld [][]uint8
+
 		select {
 		case halo := <- in_halo:
 			neighboursWorld = append(neighboursWorld, halo.FirstHalo)
 			neighboursWorld = append(neighboursWorld, world...)
 			neighboursWorld = append(neighboursWorld, halo.LastHalo)
+		default:
+			neighboursWorld = append(neighboursWorld, world...)
 		}
 		nextWorld = calculateNextState(req, neighboursWorld)
 
 		mutex.Lock()
+		fmt.Println("1")
 		flippedCellChannels <- flippedCells(world, nextWorld)
+		fmt.Println("2")
 		aliveCellCountChannel <- findAliveCellCount(nextWorld)
+		fmt.Println("3")
 		first_halo_channel <- nextWorld[0]
+		fmt.Println("4")
 		last_halo_channel <- nextWorld[len(world)-1]
+		fmt.Println("5")
+
 		turnChannel <- turn
 		world = nextWorld
 

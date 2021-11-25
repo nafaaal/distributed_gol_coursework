@@ -178,9 +178,13 @@ func getHalo(clients []*rpc.Client, turns int) {
 		for _, client := range clients{
 			client.Call(stubs.GetHaloRegions, stubs.EmptyRequest{}, response)
 			haloResponses = append(haloResponses, response)
+			fmt.Println("GOT HALO RESPONSE")
 		}
+		fmt.Println("OUT OF FOR LOOP")
+		go sendHalo(clients, turns)
 		inHaloChannel <- haloResponses
-		sendHalo(clients, turns)
+		fmt.Println("PASSED HALO RESPONSE DOWN CHANNEl")
+
 	}
 }
 
@@ -190,6 +194,7 @@ func sendHalo(clients []*rpc.Client, turns int) {
 		var halo stubs.HaloResponse
 		select {
 		case sendback := <-inHaloChannel:
+			fmt.Println("HALO RECIENCEDDD")
 			size := len(sendback)-1
 			for index, client := range clients{
 				if index == 0 {
@@ -265,10 +270,10 @@ func (s *GameOfLifeOperation) CompleteTurn(req stubs.Request, res *stubs.Respons
 	go flipCellHandler(workerConnections, req.Turns)
 	//go aliveCellHandler(workerConnections, req.Turns)
 	//go UpdateTurns(workerConnections, req.Turns)
-
 	go test(workerConnections, req.Turns)
 
-	go firstHalo(workerConnections, req)
+	//go firstHalo(workerConnections, req)
+	go getHalo(workerConnections, req.Turns)
 	final := sendWorkers(req, workerConnections)
 
 	res.World = final // collect the world back together and return

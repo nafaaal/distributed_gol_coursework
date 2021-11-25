@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net/rpc"
 	"strconv"
-	"strings"
 	"time"
 
 	"uk.ac.bris.cs/gameoflife/stubs"
@@ -170,12 +169,14 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 	go keyPressesFunc(p, c, client, keyPresses)
 	go sdlHandler(p, c, client)
 
-	var nodeAddresses []string
-	for _, node := range strings.Split(Server, ",") {
-		nodeAddresses = append(nodeAddresses, node+":8030")
-	}
+	//var nodeAddresses []string
+	//for _, node := range strings.Split(Server, ",") {
+	//	nodeAddresses = append(nodeAddresses, node+":8030")
+	
 
-	request := stubs.Request{Turns: p.Turns, Threads: p.Threads, ImageWidth: p.ImageHeight, ImageHeight: p.ImageWidth, GameStatus: "NEW", InitialWorld: initialWorld, Workers: nodeAddresses}
+	 var testNodes = []string{"localhost:8000","localhost:8001"}
+
+	request := stubs.Request{Turns: p.Turns, Threads: p.Threads, ImageWidth: p.ImageHeight, ImageHeight: p.ImageWidth, GameStatus: "NEW", InitialWorld: initialWorld, Workers: testNodes}
 	response := stubs.Response{World: makeMatrix(p.ImageWidth,p.ImageHeight)}
 
 	callTurn(client, request, &response)
