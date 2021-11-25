@@ -40,7 +40,7 @@ func resetState(worldSize int){
 	mutex.Unlock()
 }
 
-func findAliveCellCount( world [][]uint8) int {
+func findAliveCellCount(world [][]uint8) int {
 	var length = len(world)
 	var count = 0
 	for col := 0; col < length; col++ {
@@ -52,7 +52,6 @@ func findAliveCellCount( world [][]uint8) int {
 	}
 	return count
 }
-
 
 
 type GameOfLifeOperation struct{}
@@ -72,6 +71,7 @@ func sendWorkers(req stubs.Request, workerConnections []*rpc.Client) [][]uint8 {
 
 	workerHeight := req.ImageHeight / len(req.Workers)
 	var newPixelData [][]uint8
+
 	responses := make([]chan [][]uint8, len(req.Workers))
 	for i := 0; i < len(req.Workers); i++ {
 		responses[i] = make(chan [][]uint8)
@@ -83,22 +83,15 @@ func sendWorkers(req stubs.Request, workerConnections []*rpc.Client) [][]uint8 {
 		if j == len(req.Workers) - 1 { // send the extra part when workerHeight is not a whole number in last iteration
 			endHeight += req.ImageHeight % len(req.Workers)
 		}
-		fmt.Println(startHeight, endHeight)
-
 		relevantSlice := req.InitialWorld[startHeight:endHeight]
-
-		//fmt.Println(len(relevantSlice))
 		go workerNode(workerConnections[j], startHeight, endHeight, req.ImageWidth, relevantSlice, req.Turns, responses[j])
 	}
-
 
 	for j := 0; j < len(req.Workers); j++ {
 		result := <-responses[j]
 		newPixelData = append(newPixelData, result...)
 	}
-
 	return newPixelData
-
 }
 
 func makeWorkerConnectionsAndChannels(workers []string) ([]*rpc.Client) {
@@ -170,78 +163,74 @@ func UpdateTurns(clients []*rpc.Client, turns int) {
 	}
 }
 
+func firstHalo(clients []*rpc.Client, req [][]uint8) {
+
+	numOfHalo := len(clients)-1
+	for index, client := range clients{
+		var temp1, temp2 []uint8
+		if index == 0 {
+			temp1 = req[numOfHalo]
+			temp2 = req[1]
+		} else if index == len(clients)-1 {
+			temp1 = req[numOfHalo-1]
+			temp2 =  req[0]
+		} else {
+			temp1 = req[index-1]
+			temp2 =	req[index+1]
+		}
+		//fmt.Println("Send Halo")
+		client.Call(stubs.ReceiveHaloRegions, stubs.HaloResponse{FirstHalo: temp1, LastHalo: temp2}, &stubs.EmptyResponse{})
+	}
+}
 
 func getHalo(clients []*rpc.Client, turns int) {
 
 	var haloResponses []*stubs.HaloResponse
 	for i := 0; i < turns; i++ {
 		response := new(stubs.HaloResponse)
-		for index, client := range clients{
+		for _, client := range clients{
 			err := client.Call(stubs.GetHaloRegions, stubs.EmptyRequest{}, response)
 			if err != nil {
-				fmt.Println("GET HALO BROKEN")
+				//fmt.Println("GET HALO BROKEN")
 				return
 			}
 			haloResponses = append(haloResponses, response)
-			fmt.Printf("GOT HALO RESPONSE from client %d- ", index)
+			//fmt.Printf("GOT HALO RESPONSE from client %d- ", index)
 		}
-		fmt.Println("\nGot all halos from all clients")
+		//fmt.Println("\nGot all halos from all clients")
 		go sendHalo(clients, turns)
 		inHaloChannel <- haloResponses
-		fmt.Println("Passed all halos down channel")
+		//fmt.Println("Passed all halos down channel")
 	}
 }
 
 func sendHalo(clients []*rpc.Client, turns int) {
 
 	for i := 0; i < turns; i++ {
-		var halo stubs.HaloResponse
 		select {
 		case sendback := <-inHaloChannel:
-			fmt.Println("\nCollected from halo channel")
 			size := len(sendback)-1
 			for index, client := range clients {
+				var temp1, temp2 []uint8
 				if index == 0 {
-					halo.FirstHalo = sendback[size].LastHalo
-					halo.LastHalo = sendback[1].FirstHalo
+					temp1 = sendback[size].LastHalo
+					temp2 = sendback[1].FirstHalo
 				} else if index == len(clients)-1 {
-					halo.FirstHalo = sendback[size-1].FirstHalo
-					halo.LastHalo = sendback[0].FirstHalo
+					temp1 = sendback[size-1].FirstHalo
+					temp2 = sendback[0].FirstHalo
 				} else {
-					halo.FirstHalo = sendback[index-1].LastHalo
-					halo.LastHalo = sendback[index+1].FirstHalo
+					temp1 = sendback[index-1].LastHalo
+					temp2 = sendback[index+1].FirstHalo
 				}
-				fmt.Println("Send Halo back to node")
-				err := client.Call(stubs.ReceiveHaloRegions, stubs.EmptyRequest{}, halo)
+				err := client.Call(stubs.ReceiveHaloRegions,  stubs.HaloResponse{FirstHalo: temp1, LastHalo: temp2}, &stubs.EmptyResponse{})
 				if err != nil {
-					fmt.Println("Couldt not send halo back to node\n")
+					//fmt.Println("Couldn't not send halo back to node")
 					return
 				}
 			}
 		}
 	}
 }
-
-func firstHalo(clients []*rpc.Client, req stubs.Request) {
-
-	var halo stubs.HaloResponse
-	numOfHalo := len(req.Workers)-1
-	for index, client := range clients{
-		if index == 0 {
-			halo.FirstHalo = req.InitialWorld[numOfHalo]
-			halo.LastHalo = req.InitialWorld[1]
-		} else if index == len(clients)-1 {
-			halo.FirstHalo = req.InitialWorld[numOfHalo-1]
-			halo.LastHalo = req.InitialWorld[0]
-		} else {
-			halo.FirstHalo = req.InitialWorld[index-1]
-			halo.LastHalo = req.InitialWorld[index+1]
-		}
-		fmt.Println("Send Halo")
-		client.Call(stubs.ReceiveHaloRegions, stubs.EmptyRequest{}, halo)
-	}
-}
-
 
 
 func test(clients []*rpc.Client, turns int) {
@@ -252,8 +241,9 @@ func test(clients []*rpc.Client, turns int) {
 		for _, client := range clients{
 			client.Call(stubs.GetTurnAndAliveCell, stubs.EmptyRequest{}, response)
 			alive += response.NumOfAliveCells
+			//fmt.Printf("alive from client %d - %d\n", index, response.NumOfAliveCells)
 		}
-
+		//fmt.Printf("%d,%d\n", turn, alive)
 		mutex.Lock()
 		globalAlive = alive
 		turn = response.Turn
@@ -262,6 +252,7 @@ func test(clients []*rpc.Client, turns int) {
 
 	}
 }
+
 
 
 
@@ -280,7 +271,8 @@ func (s *GameOfLifeOperation) CompleteTurn(req stubs.Request, res *stubs.Respons
 	//go UpdateTurns(workerConnections, req.Turns)
 	go test(workerConnections, req.Turns)
 
-	//go firstHalo(workerConnections, req)
+	world := req.InitialWorld
+	go firstHalo(workerConnections, world)
 	go getHalo(workerConnections, req.Turns)
 	final := sendWorkers(req, workerConnections)
 
