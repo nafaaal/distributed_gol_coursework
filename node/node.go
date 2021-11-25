@@ -64,6 +64,7 @@ func getNumberOfNeighbours(p stubs.NodeRequest, col, row int, worldCopy [][]uint
 			if i != 0 || j != 0 { //{i=0, j=0} is the cell you are trying to get neighbours of!
 				height := (col + p.EndY-p.StartY + i) % (p.EndY-p.StartY)
 				width := (row + p.Width + j) % p.Width
+				fmt.Printf("Height inside neighbours = %d,  endy-starty = %d\n", height , p.EndY-p.StartY )
 				if worldCopy[height][width] == 255 {
 					neighbours++
 				}
