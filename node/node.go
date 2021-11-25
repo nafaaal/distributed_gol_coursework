@@ -77,10 +77,12 @@ func calculateNextState(req stubs.NodeRequest, initialWorld [][]uint8) [][]uint8
 	width := len(req.CurrentWorld[0])
 	newWorld := makeMatrix(height, width)
 
+	fmt.Printf("HEIGHT IS - %d\n", height)
 	for col := 0; col < height; col++ {
 		for row := 0; row < width; row++ {
 
 			//startY+col gets the absolute y position when there is more than 1 worker
+			//fmt.Println(col)
 			n := getNumberOfNeighbours(req, col, row, initialWorld)
 			currentState := initialWorld[col][row]
 
