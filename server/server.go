@@ -268,7 +268,7 @@ func (s *GameOfLifeOperation) CompleteTurn(req stubs.Request, res *stubs.Respons
 
 	go test(workerConnections, req.Turns)
 
-	firstHalo(workerConnections, req)
+	go firstHalo(workerConnections, req)
 	final := sendWorkers(req, workerConnections)
 
 	res.World = final // collect the world back together and return
