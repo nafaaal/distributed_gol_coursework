@@ -27,13 +27,26 @@ func makeMatrix(height, width int) [][]uint8 {
 	return matrix
 }
 
-func findAliveCellCount(world [][]uint8, req stubs.NodeRequest) int {
-	height := req.EndY - req.StartY
-	width := req.Width
+//func findAliveCellCount(world [][]uint8, req stubs.NodeRequest) int {
+//	height := req.EndY - req.StartY
+//	width := req.Width
+//	var count = 0
+//	for col := 0; col < height; col++ {
+//		for row := 0; row < width; row++ {
+//			if world[req.StartY+col][row] == 255 {
+//				count++
+//			}
+//		}
+//	}
+//	return count
+//}
+
+func findAliveCellCount(world [][]uint8) int {
+	var length = len(world)
 	var count = 0
-	for col := 0; col < height; col++ {
-		for row := 0; row < width; row++ {
-			if world[req.StartY+col][row] == 255 {
+	for col := 0; col < length; col++ {
+		for row := 0; row < length; row++ {
+			if world[col][row] == 255 {
 				count++
 			}
 		}
@@ -104,7 +117,7 @@ func (s *Node) ProcessSlice(req stubs.NodeRequest, res *stubs.NodeResponse) (err
 		nextWorld = calculateNextState(req, world)
 		mutex.Lock()
 		flippedCellChannels <- flippedCells(world, nextWorld)
-		aliveCellCountChannel <- findAliveCellCount(nextWorld, req)
+		aliveCellCountChannel <- findAliveCellCount(nextWorld)
 		turnChannel <- turn
 		world = nextWorld
 		mutex.Unlock()
@@ -151,7 +164,7 @@ func (s *Node) GetTurnAndAliveCell(req stubs.EmptyRequest, res *stubs.TurnRespon
 }
 
 func main() {
-	pAddr := flag.String("port", "8031", "Port to listen on")
+	pAddr := flag.String("port", "8030", "Port to listen on")
 	flag.Parse()
 	rpc.Register(&Node{})
 	listener, _ := net.Listen("tcp", ":"+*pAddr)

@@ -172,7 +172,7 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 
 	var nodeAddresses []string
 	for _, node := range strings.Split(Server, ",") {
-		nodeAddresses = append(nodeAddresses, node+":8031")
+		nodeAddresses = append(nodeAddresses, node+":8030")
 	}
 
 	request := stubs.Request{Turns: p.Turns, Threads: p.Threads, ImageWidth: p.ImageHeight, ImageHeight: p.ImageWidth, GameStatus: "NEW", InitialWorld: initialWorld, Workers: nodeAddresses}
