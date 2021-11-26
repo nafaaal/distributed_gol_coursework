@@ -129,27 +129,62 @@ func flipCellHandler(clients []*rpc.Client, turns int) {
 	}
 }
 
-func firstHalo(clients []*rpc.Client, world [][]uint8) {
-
-	numOfHalo := len(clients)-1
-	for index, client := range clients{
-		var topHalo, bottomHalo []uint8
-		if index == 0 {
-			topHalo = world[numOfHalo]
-			bottomHalo = world[1]
-		} else if index == numOfHalo {
-			topHalo = world[numOfHalo-1]
-			bottomHalo =  world[0]
-		} else {
-			topHalo = world[index-1]
-			bottomHalo =	world[index+1]
+// func to make return all top and bottom slices for all parts
+func sendInitialHalo(req stubs.Request, clients []*rpc.Client){
+	var halos []stubs.HaloResponse
+	workerHeight := req.ImageHeight / len(req.Workers)
+	for j := 0; j < len(req.Workers); j++ {
+		var h1, h2 []uint8
+		startHeight := workerHeight*j
+		endHeight :=  workerHeight*(j+1)
+		if j == len(req.Workers) - 1 { // send the extra part when workerHeight is not a whole number in last iteration
+			endHeight += req.ImageHeight % len(req.Workers)
 		}
-		//fmt.Println("Send Halo")
-		client.Call(stubs.ReceiveHaloRegions, stubs.HaloResponse{FirstHalo: topHalo, LastHalo: bottomHalo}, &stubs.EmptyResponse{})
+		h1 = req.InitialWorld[startHeight]
+		h2 = req.InitialWorld[endHeight-1]
+		halos = append(halos, stubs.HaloResponse{FirstHalo: h1, LastHalo: h2})
+	}
+	for index, client := range clients{
+		err := client.Call(stubs.SendHaloToNode, halos[index], &stubs.EmptyResponse{})
+		if err != nil {
+			return
+		}
 	}
 }
 
-func getHalo(clients []*rpc.Client, turns int) {
+//func to take all slices and arrange it to clients in order
+func haloExchange(halos []stubs.HaloResponse) []stubs.HaloResponse {
+	var newExchange []stubs.HaloResponse
+	size := len(halos)-1
+
+	if size == 0 {
+		fmt.Printf("ONE CLIENT\n")
+		newExchange = append(newExchange, stubs.HaloResponse{FirstHalo: halos[0].LastHalo, LastHalo: halos[0].FirstHalo})
+		return newExchange
+	}
+
+	for i, _ := range halos {
+		var h1, h2 []uint8
+		if i == 0 {
+			h1 = halos[size].LastHalo
+			h2 = halos[i+1].FirstHalo
+		} else if i == size {
+			h1 = halos[size-1].FirstHalo
+			h2 = halos[0].FirstHalo
+		} else {
+			h1 = halos[i-1].LastHalo
+			h2 = halos[i+1].FirstHalo
+		}
+		newExchange = append(newExchange, stubs.HaloResponse{FirstHalo: h1, LastHalo: h2})
+	}
+	return newExchange
+}
+
+
+
+func getHalo(clients []*rpc.Client, turns int, req stubs.Request) {
+
+	sendInitialHalo(req, clients)
 
 	var haloResponses []*stubs.HaloResponse
 	for i := 0; i < turns; i++ {
@@ -161,7 +196,6 @@ func getHalo(clients []*rpc.Client, turns int) {
 				return
 			}
 			haloResponses = append(haloResponses, response)
-			//fmt.Printf("GOT HALO RESPONSE from client %d- ", index)
 		}
 		//fmt.Println("\nGot all halos from all clients")
 		go sendHalo(clients, turns)
@@ -170,40 +204,35 @@ func getHalo(clients []*rpc.Client, turns int) {
 	}
 }
 
-// first send the halo regions before game starts
-// takes the halos and stitches it to current world
-// need to return the new halo regions -> which are the newworld ge bai thah
-//repeat from 2
+
+func dereference(ptr []*stubs.HaloResponse) []stubs.HaloResponse {
+	var halos []stubs.HaloResponse
+	for _, haloPointer := range ptr {
+		halos = append(halos, *haloPointer)
+	}
+	return halos
+}
+
+
+
 func sendHalo(clients []*rpc.Client, turns int) {
-	for i := 0; i < turns; i++ {
 		select {
 		case sendback := <-inHaloChannel:
-			size := len(sendback)-1
+			//fmt.Println(dereference(sendback))
+			//fmt.Println(dereference(sendback))
+			halos := haloExchange(dereference(sendback))
+			//fmt.Println("")//there is a nill array at first
+			//fmt.Println(halos)
+			//fmt.Println(halos)
 			for index, client := range clients {
-				var temp1, temp2 []uint8
-				if len(clients) == 1{
-					temp1 = sendback[size].LastHalo
-					temp2 = sendback[size].FirstHalo
-				} else {
-					if index == 0 {
-						temp1 = sendback[size].LastHalo
-						temp2 = sendback[1].FirstHalo
-					} else if index == len(clients)-1 {
-						temp1 = sendback[size-1].FirstHalo
-						temp2 = sendback[0].FirstHalo
-					} else {
-						temp1 = sendback[index-1].LastHalo
-						temp2 = sendback[index+1].FirstHalo
-					}
-				}
-				err := client.Call(stubs.ReceiveHaloRegions,  stubs.HaloResponse{FirstHalo: temp1, LastHalo: temp2}, &stubs.EmptyResponse{})
+				//fmt.Println(halos[index])
+				err := client.Call(stubs.SendHaloToNode,  halos[index], &stubs.EmptyResponse{})
 				if err != nil {
 					//fmt.Println("Couldn't not send halo back to node")
 					return
 				}
 			}
 		}
-	}
 }
 
 
@@ -241,12 +270,12 @@ func (s *GameOfLifeOperation) CompleteTurn(req stubs.Request, res *stubs.Respons
 	workerConnections := makeWorkerConnectionsAndChannels(req.Workers)
 
 	go flipCellHandler(workerConnections, req.Turns)
-
 	go getTurnsAndCellCount(workerConnections, req.Turns)
 
-	world := req.InitialWorld
-	go firstHalo(workerConnections, world)
-	go getHalo(workerConnections, req.Turns)
+	//go sendInitialHalo(req, workerConnections)
+
+	go getHalo(workerConnections, req.Turns, req)
+
 	final := sendWorkers(req, workerConnections)
 
 	res.World = final // collect the world back together and return

@@ -15,7 +15,7 @@ var GetWorld = "GameOfLifeOperation.GetWorld"
 var GetTurn = "Node.GetTurn"
 var GetTurnAndAliveCell ="Node.GetTurnAndAliveCell"
 var GetHaloRegions = "Node.GetHaloRegions"
-var ReceiveHaloRegions = "Node.ReceiveHaloRegions"
+var SendHaloToNode = "Node.SendHaloToNode"
 
 type Request struct {
 	Turns       int

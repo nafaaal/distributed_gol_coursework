@@ -30,20 +30,6 @@ func makeMatrix(height, width int) [][]uint8 {
 	return matrix
 }
 
-//func findAliveCellCount(world [][]uint8, req stubs.NodeRequest) int {
-//	height := req.EndY - req.StartY
-//	width := req.Width
-//	var count = 0
-//	for col := 0; col < height; col++ {
-//		for row := 0; row < width; row++ {
-//			if world[req.StartY+col][row] == 255 {
-//				count++
-//			}
-//		}
-//	}
-//	return count
-//}
-
 func findAliveCellCount(world [][]uint8) int {
 	var height = len(world)
 	var width = len(world[0])
@@ -85,30 +71,36 @@ func makeImmutableMatrix(matrix [][]uint8) func(y, x int) uint8 {
 func calculateNextState(req stubs.NodeRequest, initialWorld [][]uint8) [][]uint8 {
 	height := len(req.CurrentWorld)
 	width := len(req.CurrentWorld[0])
-	newWorld := makeMatrix(height, width)           //original slice size
+	newWorld := makeMatrix(height, width) //original slice size
+
+	//fmt.Println(height)
+	//fmt.Println(len(initialWorld))
+
 	neighbours := makeImmutableMatrix(initialWorld) // the one with halo
 
-	for col := 1; col < height-1; col++ {
-		for row := 0; row < width; row++ {
+	for col, col2 := 1, 0; col2 < height; col, col2 = col+1, col2+1 {
+	//for col := 1 ; col < height-1; col= col+1 {
+			for row := 0; row < width; row++ {
 
-			//fmt.Printf("len of initial world inside calculate next step- %d", len(initialWorld))
-			n := getNumberOfNeighbours(req, col, row, neighbours)
-			currentState := initialWorld[col][row]
+				//fmt.Printf("len of initial world inside calculate next step- %d", len(initialWorld))
+				n := getNumberOfNeighbours(req, col, row, neighbours)
+				currentState := initialWorld[col][row]
 
-			if currentState == 255 {
-				if n == 2 || n == 3 {
-					newWorld[col-1][row] = 255
+				if currentState == 255 {
+					if n == 2 || n == 3 {
+						newWorld[col-1][row] = 255
+					}
 				}
-			}
 
-			if currentState == 0 {
-				if n == 3 {
-					newWorld[col-1][row] = 255
+				if currentState == 0 {
+					if n == 3 {
+						newWorld[col-1][row] = 255
+					}
 				}
 			}
 		}
-	}
-	fmt.Println("newworld returned")
+
+	fmt.Println(len(newWorld))
 	return newWorld
 }
 func flippedCells(req stubs.NodeRequest, initial, nextState [][]uint8) []util.Cell {
@@ -142,7 +134,7 @@ func (s *Node) ProcessSlice(req stubs.NodeRequest, res *stubs.NodeResponse) (err
 		}
 
 		nextWorld = calculateNextState(req, neighboursWorld)
-		fmt.Printf("turn-%d, alivecellcount-%d\n", turn, findAliveCellCount(nextWorld))
+		//fmt.Printf("turn-%d, alivecellcount-%d\n", turn, findAliveCellCount(nextWorld))
 
 		mutex.Lock()
 		// fmt.Println("1")
@@ -150,10 +142,15 @@ func (s *Node) ProcessSlice(req stubs.NodeRequest, res *stubs.NodeResponse) (err
 		// fmt.Println("2")
 		aliveCellCountChannel <- findAliveCellCount(nextWorld)
 		// fmt.Println("3")
-		firstHaloChannel <- nextWorld[0]
+		var h1 []uint8
+		h1 = nextWorld[0]
+		firstHaloChannel <- h1
 		// fmt.Println("4")
-		lastHaloChannel <- nextWorld[len(world)-1]
-		// fmt.Println("5")
+		var h2 []uint8
+		h2 = nextWorld[len(nextWorld)-1]
+		lastHaloChannel <- h2
+
+		fmt.Printf("%d %d \n", countSlice(h1), countSlice(h2))
 
 		turnChannel <- turn
 		world = nextWorld
@@ -205,25 +202,36 @@ func (s *Node) GetHaloRegions(req stubs.EmptyRequest, res *stubs.HaloResponse) (
 		select {
 		case first := <-firstHaloChannel:
 			res.FirstHalo = first
+			//fmt.Println(first)
 		case last := <-lastHaloChannel:
-			res.LastHalo = last
+			res.LastHalo = last //this giving nil
+			//fmt.Println(last)
 		}
 	}
 	return
 }
 
-func testfunc(arr []uint8) int {
+func countSlice(arr []uint8) int{
 	count := 0
-	for _, i := range arr {
-		if i>0{
+	for _, element := range arr {
+		if element>0{
 			count++
 		}
 	}
 	return count
 }
 
-func (s *Node) ReceiveHaloRegions(req stubs.HaloResponse, res *stubs.EmptyResponse) (err error) {
-	fmt.Printf("First halo - alive %d, Second halo - alive %d\n", testfunc(req.FirstHalo), testfunc(req.LastHalo))
+
+func countHalos(arr stubs.HaloResponse){
+	top := 0
+	down := 0
+	top += countSlice(arr.FirstHalo)
+	down += countSlice(arr.LastHalo)
+	fmt.Printf("%d %d\n", top, down)
+}
+
+func (s *Node) SendHaloToNode(req stubs.HaloResponse, res *stubs.EmptyResponse) (err error) {
+	//countHalos(req)
 	inHalo <- req
 	return
 }

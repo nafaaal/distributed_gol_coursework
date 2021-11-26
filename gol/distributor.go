@@ -77,7 +77,7 @@ func timer(client *rpc.Client, c distributorChannels, finish *bool) {
 		<- ticker.C
 		if !(*finish) {
 			turn, aliveCellCount := callTurnAndWorld(client)
-			fmt.Println(turn, aliveCellCount)
+			//fmt.Println(turn, aliveCellCount)
 			c.events <- AliveCellsCount{turn, aliveCellCount}
 		} else {
 			break
@@ -163,6 +163,10 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 	defer client.Close()
 
 	initialWorld := readPgmData(p, c, makeMatrix(p.ImageHeight, p.ImageWidth))
+
+	fmt.Println(initialWorld[0])
+	fmt.Println("")
+	fmt.Println(initialWorld[511])
 
 	allTurnsProcessed := false
 	go timer(client, c, &allTurnsProcessed)
