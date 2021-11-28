@@ -45,9 +45,23 @@ func workerNode(client *rpc.Client, startHeight, endHeight, width int, currentWo
 	result <- response.WorldSlice
 }
 
+func getWorkerSlices(req stubs.Request)[][]int{
+	var slices [][]int
+	workerHeight := req.ImageHeight / len(req.Workers)
+	for j := 0; j < len(req.Workers); j++ {
+		startHeight := workerHeight * j
+		endHeight := workerHeight * (j + 1)
+		if j == len(req.Workers)-1 { // send the extra part when workerHeight is not a whole number in last iteration
+			endHeight += req.ImageHeight % len(req.Workers)
+		}
+		slices = append(slices, []int{startHeight, endHeight})
+	}
+
+	return slices
+}
+
 func sendWorkers(req stubs.Request) [][]uint8 {
 
-	workerHeight := req.ImageHeight / len(req.Workers)
 	var newPixelData [][]uint8
 
 	responses := make([]chan [][]uint8, len(req.Workers))
@@ -55,22 +69,17 @@ func sendWorkers(req stubs.Request) [][]uint8 {
 		responses[i] = make(chan [][]uint8)
 	}
 
-	for j := 0; j < len(req.Workers); j++ {
-		startHeight := workerHeight * j
-		endHeight := workerHeight * (j + 1)
-		if j == len(req.Workers)-1 { // send the extra part when workerHeight is not a whole number in last iteration
-			endHeight += req.ImageHeight % len(req.Workers)
-		}
+	workerSlices := getWorkerSlices(req)
 
-		relevantSlice := req.InitialWorld[startHeight:endHeight]
-
-		go workerNode(clients[j], startHeight, endHeight, req.ImageWidth, relevantSlice, req.Turns, responses[j])
+	for j, slices := range workerSlices{
+		go workerNode(clients[j], slices[0], slices[1], req.ImageWidth, req.InitialWorld[slices[0]:slices[1]], req.Turns, responses[j])
 	}
 
-	for j := 0; j < len(req.Workers); j++ {
-		result := <-responses[j]
+	for k := 0; k < len(req.Workers); k++ {
+		result := <-responses[k]
 		newPixelData = append(newPixelData, result...)
 	}
+
 	return newPixelData
 }
 
@@ -109,17 +118,12 @@ func flipCellHandler(turns int) {
 
 // func to make return all top and bottom slices for all parts 512 0, 511   0 255 256 511
 func sendInitialHalo(req stubs.Request) {
+
+	workerSlices := getWorkerSlices(req)
 	var halos []stubs.HaloResponse
-	workerHeight := req.ImageHeight / len(req.Workers)
-	for j := 0; j < len(req.Workers); j++ {
-		var h1, h2 []uint8
-		startHeight := workerHeight * j
-		endHeight := workerHeight * (j + 1)
-		if j == len(req.Workers)-1 { // send the extra part when workerHeight is not a whole number in last iteration
-			endHeight += req.ImageHeight % len(req.Workers)
-		}
-		h1 = req.InitialWorld[startHeight]
-		h2 = req.InitialWorld[endHeight-1]
+	for _, slice := range  workerSlices{
+		h1 := req.InitialWorld[slice[0]]
+		h2 := req.InitialWorld[slice[1]-1]
 		halos = append(halos, stubs.HaloResponse{FirstHalo: h1, LastHalo: h2})
 	}
 	sendHalo(halos)
