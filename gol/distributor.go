@@ -19,7 +19,6 @@ type distributorChannels struct {
 	ioInput    <-chan uint8
 }
 
-
 func makeMatrix(height, width int) [][]uint8 {
 	matrix := make([][]uint8, height)
 	for i := range matrix {
@@ -74,7 +73,7 @@ func findAliveCells(p Params, world [][]uint8) []util.Cell {
 func timer(client *rpc.Client, c distributorChannels, finish *bool) {
 	ticker := time.NewTicker(2 * time.Second)
 	for {
-		<- ticker.C
+		<-ticker.C
 		if !(*finish) {
 			turn, aliveCellCount := callTurnAndWorld(client)
 			//fmt.Println(turn, aliveCellCount)
@@ -86,21 +85,21 @@ func timer(client *rpc.Client, c distributorChannels, finish *bool) {
 	return
 }
 
-func saveWorld(p Params, c distributorChannels, client *rpc.Client){
+func saveWorld(p Params, c distributorChannels, client *rpc.Client) {
 	turn, _ := callTurnAndWorld(client)
 	world := callWorld(client)
 	writePgmData(p, c, world, turn)
 }
 
-func stateChange(client *rpc.Client, c distributorChannels, newState State){
+func stateChange(client *rpc.Client, c distributorChannels, newState State) {
 	turn, _ := callTurnAndWorld(client)
 	c.events <- StateChange{turn, newState}
 }
 
-func keyPressesFunc(p Params, c distributorChannels, client *rpc.Client, keyPresses <-chan rune){
+func keyPressesFunc(p Params, c distributorChannels, client *rpc.Client, keyPresses <-chan rune) {
 	for {
 		select {
-		case key := <- keyPresses:
+		case key := <-keyPresses:
 			if key == 's' {
 				saveWorld(p, c, client)
 			}
@@ -137,23 +136,22 @@ func keyPressesFunc(p Params, c distributorChannels, client *rpc.Client, keyPres
 	}
 }
 
-func sdlHandler(p Params, c distributorChannels, client *rpc.Client){
+func sdlHandler(p Params, c distributorChannels, client *rpc.Client) {
 
-	for i :=0; i<p.Turns; i++{
+	for i := 0; i < p.Turns; i++ {
 		response := new(stubs.SdlResponse)
 		err := client.Call(stubs.GetWorldPerTurn, stubs.EmptyRequest{}, response)
 		if err != nil {
 			fmt.Println(err)
 		}
 
-		for _, flippedCells := range response.FlippedCells{
+		for _, flippedCells := range response.FlippedCells {
 			c.events <- CellFlipped{CompletedTurns: response.Turn, Cell: flippedCells}
 		}
 		c.events <- TurnComplete{response.Turn}
 	}
 	return
 }
-
 
 // distributor divides the work between workers and interacts with other goroutines.
 func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
@@ -172,13 +170,14 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 	//var nodeAddresses []string
 	//for _, node := range strings.Split(Server, ",") {
 	//	nodeAddresses = append(nodeAddresses, node+":8030")
-
-
-	//var testNodes = []string{"localhost:8000","localhost:8001"}
-	var testNodes = []string{"localhost:8000"}
+	//}
+	//var testNodes = []string{"localhost:8000","localhost:8001","localhost:8004"}
+	var testNodes = []string{"localhost:8000", "localhost:8001"}
+	//var testNodes = []string{"localhost:8000","localhost:8002"}
+	// var testNodes = []string{"localhost:8000"}
 
 	request := stubs.Request{Turns: p.Turns, Threads: p.Threads, ImageWidth: p.ImageHeight, ImageHeight: p.ImageWidth, GameStatus: "NEW", InitialWorld: initialWorld, Workers: testNodes}
-	response := stubs.Response{World: makeMatrix(p.ImageWidth,p.ImageHeight)}
+	response := stubs.Response{World: makeMatrix(p.ImageWidth, p.ImageHeight)}
 
 	callTurn(client, request, &response)
 	allTurnsProcessed = true
