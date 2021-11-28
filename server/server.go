@@ -12,11 +12,10 @@ import (
 )
 
 var turn int
-var globaWorld [][]uint8
+var globalWorld [][]uint8
 var globalAlive int
 var mutex sync.Mutex
 var clients []*rpc.Client
-
 var turnChannel = make(chan int)
 var flippedCellChannels = make(chan []util.Cell)
 
@@ -202,8 +201,8 @@ func getTurnsAndCellCount(turns int) {
 
 func (s *GameOfLifeOperation) CompleteTurn(req stubs.Request, res *stubs.Response) (err error) {
 
-	globaWorld = req.InitialWorld
-	globalAlive = findAliveCellCount(globaWorld)
+	globalWorld = req.InitialWorld
+	globalAlive = findAliveCellCount(globalWorld)
 
 	clients = makeWorkerConnectionsAndChannels(req.Workers)
 
@@ -228,7 +227,7 @@ func (s *GameOfLifeOperation) AliveCellGetter(req stubs.EmptyRequest, res *stubs
 
 func (s *GameOfLifeOperation) GetWorld(req stubs.EmptyRequest, res *stubs.WorldResponse) (err error) {
 	mutex.Lock()
-	res.World = globaWorld //make a function to call all nodes and get their slices and make into 1
+	res.World = globalWorld //make a function to call all nodes and get their slices and make into 1
 	mutex.Unlock()
 	return
 }
