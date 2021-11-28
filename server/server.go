@@ -64,13 +64,7 @@ func sendWorkers(req stubs.Request) [][]uint8 {
 
 		relevantSlice := req.InitialWorld[startHeight:endHeight]
 
-		duplicate := make([][]uint8, endHeight-startHeight)
-		for i := range relevantSlice {
-			duplicate[i] = make([]uint8, req.ImageWidth)
-			copy(duplicate[i], relevantSlice[i])
-		}
-
-		go workerNode(clients[j], startHeight, endHeight, req.ImageWidth, duplicate, req.Turns, responses[j])
+		go workerNode(clients[j], startHeight, endHeight, req.ImageWidth, relevantSlice, req.Turns, responses[j])
 	}
 
 	for j := 0; j < len(req.Workers); j++ {
