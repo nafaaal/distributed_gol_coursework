@@ -171,7 +171,7 @@ func (s *Node) SendHaloToNode(haloFromBroker stubs.HaloResponse, res *stubs.Empt
 }
 
 func main() {
-	pAddr := flag.String("port", "8000", "Port to listen on")
+	pAddr := flag.String("port", "8030", "Port to listen on")
 	flag.Parse()
 	rpc.Register(&Node{})
 	listener, _ := net.Listen("tcp", ":"+*pAddr)
