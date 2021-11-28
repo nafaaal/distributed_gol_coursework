@@ -139,37 +139,16 @@ func haloExchange(oldHalos []stubs.HaloResponse) []stubs.HaloResponse { //if 2 s
 	if size == 0 {
 		newHalos = append(newHalos, stubs.HaloResponse{FirstHalo: oldHalos[0].LastHalo, LastHalo: oldHalos[0].FirstHalo})
 	} else {
-		for i, _ := range oldHalos {
-			//var h1, h2 []uint8 // this is assigning memory locations so need to be aware
-			var newh stubs.HaloResponse
-			//h1 = make([]uint8, len(oldHalos[0].FirstHalo))
-			//h2 = make([]uint8, len(oldHalos[0].FirstHalo))
+		for i := range oldHalos {
+			var halo stubs.HaloResponse
 			if i == 0 {
-				//var newh stubs.HaloResponse
-				newh.FirstHalo = append([]uint8(nil), oldHalos[size].LastHalo...)
-				newh.LastHalo = append([]uint8(nil), oldHalos[i+1].FirstHalo...)
-				//copy(h1, oldHalos[size].LastHalo)
-				//copy(h2, oldHalos[i+1].FirstHalo)
-				//h1 = oldHalos[size].LastHalo
-				//h2 = oldHalos[i+1].FirstHalo
+				halo = stubs.HaloResponse{FirstHalo:  oldHalos[size].LastHalo, LastHalo: oldHalos[i+1].FirstHalo}
 			} else if i == size {
-				//var newh stubs.HaloResponse
-				newh.FirstHalo = append([]uint8(nil), oldHalos[size-1].LastHalo...)
-				newh.LastHalo = append([]uint8(nil), oldHalos[0].FirstHalo...)
-				//copy(h1, oldHalos[size-1].LastHalo)
-				//copy(h2, oldHalos[0].FirstHalo)
-				//h1 = oldHalos[size-1].LastHalo
-				//h2 = oldHalos[0].FirstHalo
+				halo = stubs.HaloResponse{FirstHalo:  oldHalos[size-1].LastHalo, LastHalo: oldHalos[0].FirstHalo}
 			} else {
-				//var newh stubs.HaloResponse
-				newh.FirstHalo = append([]uint8(nil), oldHalos[i-1].LastHalo...)
-				newh.LastHalo = append([]uint8(nil), oldHalos[i+1].FirstHalo...)
-				//copy(h1, oldHalos[i-1].LastHalo)
-				//copy(h2, oldHalos[i+1].FirstHalo)
-				//h1 = oldHalos[i-1].LastHalo
-				//h2 = oldHalos[i+1].FirstHalo
+				halo = stubs.HaloResponse{FirstHalo:  oldHalos[i-1].LastHalo, LastHalo: oldHalos[i+1].FirstHalo}
 			}
-			newHalos = append(newHalos, newh)
+			newHalos = append(newHalos, halo)
 		}
 	}
 	return newHalos

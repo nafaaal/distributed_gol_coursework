@@ -16,7 +16,7 @@ var mutex sync.Mutex
 var flippedCellChannels = make(chan []util.Cell)
 var aliveCellCountChannel = make(chan int)
 var turnChannel = make(chan int)
-var haloChannel = make(chan stubs.HaloResponse)
+var outHalo = make(chan stubs.HaloResponse)
 var inHalo = make(chan stubs.HaloResponse)
 
 type Node struct{}
@@ -105,7 +105,7 @@ func (s *Node) ProcessSlice(req stubs.NodeRequest, res *stubs.NodeResponse) (err
 
 		var nextWorld [][]uint8
 		var neighboursWorld [][]uint8
-		var h1, h2 []uint8
+		//var h1, h2 []uint8
 
 		select {
 		case halo := <-inHalo:
@@ -124,10 +124,7 @@ func (s *Node) ProcessSlice(req stubs.NodeRequest, res *stubs.NodeResponse) (err
 		world = nextWorld
 		aliveCellCountChannel <- findAliveCellCount(world)
 
-		h1 = world[0]
-		h2 = world[len(nextWorld)-1]
-
-		haloChannel <- stubs.HaloResponse{FirstHalo: h1, LastHalo: h2}
+		outHalo <- stubs.HaloResponse{FirstHalo: world[0], LastHalo: world[len(nextWorld)-1]}
 
 		turnChannel <- turn
 		mutex.Unlock()
@@ -158,7 +155,7 @@ func (s *Node) GetTurnAndAliveCell(req stubs.EmptyRequest, res *stubs.TurnRespon
 
 func (s *Node) SendHaloToBroker(req stubs.EmptyRequest, res *stubs.HaloResponse) (err error) {
 	select {
-	case halo := <-haloChannel:
+	case halo := <-outHalo:
 		res.FirstHalo = halo.FirstHalo
 		res.LastHalo = halo.LastHalo
 	}
