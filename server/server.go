@@ -5,9 +5,8 @@ import (
 	"fmt"
 	"net"
 	"net/rpc"
-	"os"
 	"sync"
-	"time"
+
 	"uk.ac.bris.cs/gameoflife/stubs"
 	"uk.ac.bris.cs/gameoflife/util"
 )
@@ -16,29 +15,10 @@ var turn int
 var globaWorld [][]uint8
 var globalAlive int
 var mutex sync.Mutex
-var paused = make(chan int)
-var resume = make(chan int)
+var clients []*rpc.Client
 
 var turnChannel = make(chan int)
 var flippedCellChannels = make(chan []util.Cell)
-var inHaloChannel = make(chan []*stubs.HaloResponse)
-var outHaloChannel = make(chan []*stubs.HaloResponse)
-
-func makeMatrix(height, width int) [][]uint8 {
-	matrix := make([][]uint8, height)
-	for i := range matrix {
-		matrix[i] = make([]uint8, width)
-	}
-	return matrix
-}
-
-func resetState(worldSize int){
-	mutex.Lock()
-	turn = 0
-	//processGame = true
-	globaWorld = makeMatrix(worldSize, worldSize)
-	mutex.Unlock()
-}
 
 func findAliveCellCount(world [][]uint8) int {
 	var length = len(world)
@@ -53,11 +33,9 @@ func findAliveCellCount(world [][]uint8) int {
 	return count
 }
 
-
 type GameOfLifeOperation struct{}
 
-//need to send appropriate world slice to worker node or not
-func workerNode(client *rpc.Client, startHeight, endHeight, width int, currentWorld [][]uint8, turns int, result chan [][]uint8){
+func workerNode(client *rpc.Client, startHeight, endHeight, width int, currentWorld [][]uint8, turns int, result chan [][]uint8) {
 	request := stubs.NodeRequest{Turns: turns, StartY: startHeight, EndY: endHeight, Width: width, CurrentWorld: currentWorld}
 	response := new(stubs.NodeResponse)
 	err := client.Call(stubs.ProcessSlice, request, response)
@@ -67,7 +45,7 @@ func workerNode(client *rpc.Client, startHeight, endHeight, width int, currentWo
 	result <- response.WorldSlice
 }
 
-func sendWorkers(req stubs.Request, workerConnections []*rpc.Client) [][]uint8 {
+func sendWorkers(req stubs.Request) [][]uint8 {
 
 	workerHeight := req.ImageHeight / len(req.Workers)
 	var newPixelData [][]uint8
@@ -78,13 +56,21 @@ func sendWorkers(req stubs.Request, workerConnections []*rpc.Client) [][]uint8 {
 	}
 
 	for j := 0; j < len(req.Workers); j++ {
-		startHeight := workerHeight*j
-		endHeight :=  workerHeight*(j+1)
-		if j == len(req.Workers) - 1 { // send the extra part when workerHeight is not a whole number in last iteration
+		startHeight := workerHeight * j
+		endHeight := workerHeight * (j + 1)
+		if j == len(req.Workers)-1 { // send the extra part when workerHeight is not a whole number in last iteration
 			endHeight += req.ImageHeight % len(req.Workers)
 		}
+
 		relevantSlice := req.InitialWorld[startHeight:endHeight]
-		go workerNode(workerConnections[j], startHeight, endHeight, req.ImageWidth, relevantSlice, req.Turns, responses[j])
+
+		duplicate := make([][]uint8, endHeight-startHeight)
+		for i := range relevantSlice {
+			duplicate[i] = make([]uint8, req.ImageWidth)
+			copy(duplicate[i], relevantSlice[i])
+		}
+
+		go workerNode(clients[j], startHeight, endHeight, req.ImageWidth, duplicate, req.Turns, responses[j])
 	}
 
 	for j := 0; j < len(req.Workers); j++ {
@@ -94,11 +80,11 @@ func sendWorkers(req stubs.Request, workerConnections []*rpc.Client) [][]uint8 {
 	return newPixelData
 }
 
-func makeWorkerConnectionsAndChannels(workers []string) ([]*rpc.Client) {
+func makeWorkerConnectionsAndChannels(workers []string) []*rpc.Client {
 	var clientConnections []*rpc.Client
 	for i := 0; i < len(workers); i++ {
 		client, errors := rpc.Dial("tcp", workers[i])
-		if errors != nil{
+		if errors != nil {
 			fmt.Println(errors)
 		}
 		clientConnections = append(clientConnections, client)
@@ -106,8 +92,8 @@ func makeWorkerConnectionsAndChannels(workers []string) ([]*rpc.Client) {
 	return clientConnections
 }
 
-func closeWorkerConnections(workerConnections []*rpc.Client){
-	for _, client := range workerConnections {
+func closeWorkerConnections() {
+	for _, client := range clients {
 		err := client.Close()
 		if err != nil {
 			fmt.Println(err)
@@ -115,9 +101,7 @@ func closeWorkerConnections(workerConnections []*rpc.Client){
 	}
 }
 
-
-func flipCellHandler(clients []*rpc.Client, turns int) {
-
+func flipCellHandler(turns int) {
 	for i := 0; i < turns; i++ {
 		var flippedCell []util.Cell
 		for _, client := range clients {
@@ -129,124 +113,107 @@ func flipCellHandler(clients []*rpc.Client, turns int) {
 	}
 }
 
-// func to make return all top and bottom slices for all parts
-func sendInitialHalo(req stubs.Request, clients []*rpc.Client){
+// func to make return all top and bottom slices for all parts 512 0, 511   0 255 256 511
+func sendInitialHalo(req stubs.Request) {
 	var halos []stubs.HaloResponse
 	workerHeight := req.ImageHeight / len(req.Workers)
 	for j := 0; j < len(req.Workers); j++ {
 		var h1, h2 []uint8
-		startHeight := workerHeight*j
-		endHeight :=  workerHeight*(j+1)
-		if j == len(req.Workers) - 1 { // send the extra part when workerHeight is not a whole number in last iteration
+		startHeight := workerHeight * j
+		endHeight := workerHeight * (j + 1)
+		if j == len(req.Workers)-1 { // send the extra part when workerHeight is not a whole number in last iteration
 			endHeight += req.ImageHeight % len(req.Workers)
 		}
 		h1 = req.InitialWorld[startHeight]
 		h2 = req.InitialWorld[endHeight-1]
 		halos = append(halos, stubs.HaloResponse{FirstHalo: h1, LastHalo: h2})
 	}
-	for index, client := range clients{
-		err := client.Call(stubs.SendHaloToNode, halos[index], &stubs.EmptyResponse{})
+	sendHalo(halos)
+
+}
+
+//func to take all slices and arrange it to clients in order
+func haloExchange(oldHalos []stubs.HaloResponse) []stubs.HaloResponse { //if 2 stubs.Haloresponses
+	var newHalos []stubs.HaloResponse
+	size := len(oldHalos) - 1
+	if size == 0 {
+		newHalos = append(newHalos, stubs.HaloResponse{FirstHalo: oldHalos[0].LastHalo, LastHalo: oldHalos[0].FirstHalo})
+	} else {
+		for i, _ := range oldHalos {
+			//var h1, h2 []uint8 // this is assigning memory locations so need to be aware
+			var newh stubs.HaloResponse
+			//h1 = make([]uint8, len(oldHalos[0].FirstHalo))
+			//h2 = make([]uint8, len(oldHalos[0].FirstHalo))
+			if i == 0 {
+				//var newh stubs.HaloResponse
+				newh.FirstHalo = append([]uint8(nil), oldHalos[size].LastHalo...)
+				newh.LastHalo = append([]uint8(nil), oldHalos[i+1].FirstHalo...)
+				//copy(h1, oldHalos[size].LastHalo)
+				//copy(h2, oldHalos[i+1].FirstHalo)
+				//h1 = oldHalos[size].LastHalo
+				//h2 = oldHalos[i+1].FirstHalo
+			} else if i == size {
+				//var newh stubs.HaloResponse
+				newh.FirstHalo = append([]uint8(nil), oldHalos[size-1].LastHalo...)
+				newh.LastHalo = append([]uint8(nil), oldHalos[0].FirstHalo...)
+				//copy(h1, oldHalos[size-1].LastHalo)
+				//copy(h2, oldHalos[0].FirstHalo)
+				//h1 = oldHalos[size-1].LastHalo
+				//h2 = oldHalos[0].FirstHalo
+			} else {
+				//var newh stubs.HaloResponse
+				newh.FirstHalo = append([]uint8(nil), oldHalos[i-1].LastHalo...)
+				newh.LastHalo = append([]uint8(nil), oldHalos[i+1].FirstHalo...)
+				//copy(h1, oldHalos[i-1].LastHalo)
+				//copy(h2, oldHalos[i+1].FirstHalo)
+				//h1 = oldHalos[i-1].LastHalo
+				//h2 = oldHalos[i+1].FirstHalo
+			}
+			newHalos = append(newHalos, newh)
+		}
+	}
+	return newHalos
+}
+
+func sendHalo(halos []stubs.HaloResponse) {
+	halo := haloExchange(halos)
+	for index, client := range clients {
+		var hell = halo[index]
+		err := client.Call(stubs.SendHaloToNode, hell, &stubs.EmptyResponse{})
 		if err != nil {
 			return
 		}
 	}
 }
 
-//func to take all slices and arrange it to clients in order
-func haloExchange(halos []stubs.HaloResponse) []stubs.HaloResponse {
-	var newExchange []stubs.HaloResponse
-	size := len(halos)-1
+// }
 
-	if size == 0 {
-		fmt.Printf("ONE CLIENT\n")
-		newExchange = append(newExchange, stubs.HaloResponse{FirstHalo: halos[0].LastHalo, LastHalo: halos[0].FirstHalo})
-		return newExchange
-	}
+func haloWorker(turns int, req stubs.Request) {
 
-	for i, _ := range halos {
-		var h1, h2 []uint8
-		if i == 0 {
-			h1 = halos[size].LastHalo
-			h2 = halos[i+1].FirstHalo
-		} else if i == size {
-			h1 = halos[size-1].FirstHalo
-			h2 = halos[0].FirstHalo
-		} else {
-			h1 = halos[i-1].LastHalo
-			h2 = halos[i+1].FirstHalo
-		}
-		newExchange = append(newExchange, stubs.HaloResponse{FirstHalo: h1, LastHalo: h2})
-	}
-	return newExchange
-}
-
-
-
-func getHalo(clients []*rpc.Client, turns int, req stubs.Request) {
-
-	sendInitialHalo(req, clients)
-
-	var haloResponses []*stubs.HaloResponse
+	sendInitialHalo(req)
 	for i := 0; i < turns; i++ {
-		response := new(stubs.HaloResponse)
+		var haloResponses []stubs.HaloResponse
 		for _, client := range clients {
-			err := client.Call(stubs.GetHaloRegions, stubs.EmptyRequest{}, response)
+			response := new(stubs.HaloResponse)
+			err := client.Call(stubs.SendHaloToBroker, stubs.EmptyRequest{}, response)
 			if err != nil {
-				//fmt.Println("GET HALO BROKEN")
 				return
 			}
-			haloResponses = append(haloResponses, response)
+			haloResponses = append(haloResponses, *response)
 		}
-		//fmt.Println("\nGot all halos from all clients")
-		go sendHalo(clients, turns)
-		inHaloChannel <- haloResponses
-		//fmt.Println("Passed all halos down channel")
+		sendHalo(haloResponses)
 	}
 }
 
-
-func dereference(ptr []*stubs.HaloResponse) []stubs.HaloResponse {
-	var halos []stubs.HaloResponse
-	for _, haloPointer := range ptr {
-		halos = append(halos, *haloPointer)
-	}
-	return halos
-}
-
-
-
-func sendHalo(clients []*rpc.Client, turns int) {
-		select {
-		case sendback := <-inHaloChannel:
-			//fmt.Println(dereference(sendback))
-			//fmt.Println(dereference(sendback))
-			halos := haloExchange(dereference(sendback))
-			//fmt.Println("")//there is a nill array at first
-			//fmt.Println(halos)
-			//fmt.Println(halos)
-			for index, client := range clients {
-				//fmt.Println(halos[index])
-				err := client.Call(stubs.SendHaloToNode,  halos[index], &stubs.EmptyResponse{})
-				if err != nil {
-					//fmt.Println("Couldn't not send halo back to node")
-					return
-				}
-			}
-		}
-}
-
-
-func getTurnsAndCellCount(clients []*rpc.Client, turns int) {
+func getTurnsAndCellCount(turns int) {
 
 	for i := 0; i < turns; i++ {
 		response := new(stubs.TurnResponse)
 		var alive = 0
-		for _, client := range clients{
+		for _, client := range clients {
 			client.Call(stubs.GetTurnAndAliveCell, stubs.EmptyRequest{}, response)
 			alive += response.NumOfAliveCells
-			//fmt.Printf("alive from client %d - %d\n", index, response.NumOfAliveCells)
 		}
-		//fmt.Printf("%d,%d\n", turn, alive)
 		mutex.Lock()
 		globalAlive = alive
 		turn = response.Turn
@@ -256,30 +223,21 @@ func getTurnsAndCellCount(clients []*rpc.Client, turns int) {
 	}
 }
 
-
-
-
 func (s *GameOfLifeOperation) CompleteTurn(req stubs.Request, res *stubs.Response) (err error) {
-	if req.GameStatus == "NEW" {
-		resetState(req.ImageWidth)
-	}
 
 	globaWorld = req.InitialWorld
 	globalAlive = findAliveCellCount(globaWorld)
 
-	workerConnections := makeWorkerConnectionsAndChannels(req.Workers)
+	clients = makeWorkerConnectionsAndChannels(req.Workers)
 
-	go flipCellHandler(workerConnections, req.Turns)
-	go getTurnsAndCellCount(workerConnections, req.Turns)
+	go flipCellHandler(req.Turns)
+	go getTurnsAndCellCount(req.Turns)
+	go haloWorker(req.Turns, req)
 
-	//go sendInitialHalo(req, workerConnections)
+	final := sendWorkers(req)
 
-	go getHalo(workerConnections, req.Turns, req)
-
-	final := sendWorkers(req, workerConnections)
-
-	res.World = final // collect the world back together and return
-	closeWorkerConnections(workerConnections)
+	res.World = final
+	closeWorkerConnections()
 	return
 }
 
@@ -288,31 +246,6 @@ func (s *GameOfLifeOperation) AliveCellGetter(req stubs.EmptyRequest, res *stubs
 	res.Turn = turn
 	res.NumOfAliveCells = globalAlive
 	mutex.Unlock()
-	return
-}
-
-func (s *GameOfLifeOperation) Shutdown(req stubs.EmptyRequest, res *stubs.EmptyResponse) (err error) {
-	fmt.Println("Exiting...")
-	//shutdown all the nodes aswell
-	//processGame = false
-	<- time.After(1*time.Second)
-	os.Exit(0)
-	return
-}
-
-func (s *GameOfLifeOperation) PauseAndResume(req stubs.PauseRequest, res *stubs.EmptyResponse) (err error) {
-	if req.Command == "PAUSE" {
-		paused <- 1
-	}
-	if req.Command == "RESUME"{
-		resume <- 1
-	}
-	return
-}
-
-
-func (s *GameOfLifeOperation) ResetState(req stubs.EmptyRequest, res *stubs.EmptyResponse) (err error) {
-	//processGame = false
 	return
 }
 
@@ -327,9 +260,9 @@ func (s *GameOfLifeOperation) GetWorld(req stubs.EmptyRequest, res *stubs.WorldR
 func (s *GameOfLifeOperation) GetWorldPerTurn(req stubs.EmptyRequest, res *stubs.SdlResponse) (err error) {
 	for i := 0; i < 2; i++ {
 		select {
-		case turn := <- turnChannel:
+		case turn := <-turnChannel:
 			res.Turn = turn
-		case flipped := <- flippedCellChannels:
+		case flipped := <-flippedCellChannels:
 			res.FlippedCells = flipped
 		}
 	}

@@ -13,18 +13,18 @@ var GetFlippedCells = "Node.GetFlippedCells"
 var GetAliveCellCount = "Node.GetAliveCellCount"
 var GetWorld = "GameOfLifeOperation.GetWorld"
 var GetTurn = "Node.GetTurn"
-var GetTurnAndAliveCell ="Node.GetTurnAndAliveCell"
-var GetHaloRegions = "Node.GetHaloRegions"
+var GetTurnAndAliveCell = "Node.GetTurnAndAliveCell"
+var SendHaloToBroker = "Node.SendHaloToBroker"
 var SendHaloToNode = "Node.SendHaloToNode"
 
 type Request struct {
-	Turns       int
-	Threads     int
-	ImageWidth  int
-	ImageHeight int
-	GameStatus 	string
+	Turns        int
+	Threads      int
+	ImageWidth   int
+	ImageHeight  int
+	GameStatus   string
 	InitialWorld [][]uint8
-	Workers []string
+	Workers      []string
 }
 
 type Response struct {
@@ -35,12 +35,12 @@ type TurnRequest struct {
 }
 
 type TurnResponse struct {
-	Turn int
+	Turn            int
 	NumOfAliveCells int
 }
 
 type SdlResponse struct {
-	Turn int
+	Turn         int
 	FlippedCells []util.Cell
 }
 
@@ -66,13 +66,12 @@ type ResetResponse struct {
 }
 
 type NodeRequest struct {
-	Turns int
-	StartY int
-	EndY int
-	Width int
+	Turns        int
+	StartY       int
+	EndY         int
+	Width        int
 	CurrentWorld [][]uint8
 }
-
 
 type NodeResponse struct {
 	WorldSlice [][]uint8
@@ -88,10 +87,5 @@ type AliveCellCountResponse struct {
 
 type HaloResponse struct {
 	FirstHalo []uint8
-	LastHalo []uint8
+	LastHalo  []uint8
 }
-
-
-
-
-

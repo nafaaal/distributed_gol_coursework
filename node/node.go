@@ -88,13 +88,13 @@ func calculateNextState(req stubs.NodeRequest, initialWorld [][]uint8) [][]uint8
 
 				if currentState == 255 {
 					if n == 2 || n == 3 {
-						newWorld[col-1][row] = 255
+						newWorld[col2][row] = 255
 					}
 				}
 
 				if currentState == 0 {
 					if n == 3 {
-						newWorld[col-1][row] = 255
+						newWorld[col2][row] = 255
 					}
 				}
 			}
@@ -123,6 +123,7 @@ func (s *Node) ProcessSlice(req stubs.NodeRequest, res *stubs.NodeResponse) (err
 	for turn := 1; turn < req.Turns+1; turn++ {
 		var nextWorld [][]uint8
 		var neighboursWorld [][]uint8
+		var h1, h2 []uint8
 
 		select {
 		case halo := <-inHalo: //issue is send empty halos
@@ -134,23 +135,17 @@ func (s *Node) ProcessSlice(req stubs.NodeRequest, res *stubs.NodeResponse) (err
 		}
 
 		nextWorld = calculateNextState(req, neighboursWorld)
-		//fmt.Printf("turn-%d, alivecellcount-%d\n", turn, findAliveCellCount(nextWorld))
+		//fmt.Printf("turn-%d, alivecellcount-%d, ", turn, findAliveCellCount(nextWorld))
 
 		mutex.Lock()
-		// fmt.Println("1")
 		flippedCellChannels <- flippedCells(req, world, nextWorld)
-		// fmt.Println("2")
 		aliveCellCountChannel <- findAliveCellCount(nextWorld)
-		// fmt.Println("3")
-		var h1 []uint8
 		h1 = nextWorld[0]
 		firstHaloChannel <- h1
-		// fmt.Println("4")
-		var h2 []uint8
 		h2 = nextWorld[len(nextWorld)-1]
 		lastHaloChannel <- h2
 
-		fmt.Printf("%d %d \n", countSlice(h1), countSlice(h2))
+		fmt.Printf("%d %d ", countSlice(h1), countSlice(h2))
 
 		turnChannel <- turn
 		world = nextWorld

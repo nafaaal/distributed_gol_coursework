@@ -164,10 +164,6 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 
 	initialWorld := readPgmData(p, c, makeMatrix(p.ImageHeight, p.ImageWidth))
 
-	fmt.Println(initialWorld[0])
-	fmt.Println("")
-	fmt.Println(initialWorld[511])
-
 	allTurnsProcessed := false
 	go timer(client, c, &allTurnsProcessed)
 	go keyPressesFunc(p, c, client, keyPresses)
