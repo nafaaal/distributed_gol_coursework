@@ -241,6 +241,17 @@ func (s *GameOfLifeOperation) GetWorldPerTurn(req stubs.EmptyRequest, res *stubs
 	return
 }
 
+func (s *GameOfLifeOperation) PauseAndResume(req stubs.PauseRequest, res *stubs.EmptyResponse) (err error){
+	for _, client := range clients{
+		err := client.Call(stubs.PauseAndResumeNode, req, &stubs.EmptyResponse{})
+		if err != nil {
+			fmt.Println("Couldnt not pause / resume worker")
+			return err
+		}
+	}
+	return
+}
+
 func main() {
 	pAddr := flag.String("port", "8003", "Port to listen on")
 	flag.Parse()

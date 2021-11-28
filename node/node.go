@@ -18,6 +18,8 @@ var aliveCellCountChannel = make(chan int)
 var turnChannel = make(chan int)
 var outHalo = make(chan stubs.HaloResponse)
 var inHalo = make(chan stubs.HaloResponse)
+var paused = make(chan int)
+var resume = make(chan int)
 
 type Node struct{}
 
@@ -122,6 +124,14 @@ func (s *Node) ProcessSlice(req stubs.NodeRequest, res *stubs.NodeResponse) (err
 		turnChannel <- turn
 
 		mutex.Unlock()
+
+		select {
+		case  <- paused:
+			<-resume
+		default:
+			break
+		}
+
 	}
 	res.WorldSlice = world
 	return
@@ -158,6 +168,16 @@ func (s *Node) SendHaloToBroker(req stubs.EmptyRequest, res *stubs.HaloResponse)
 
 func (s *Node) SendHaloToNode(haloFromBroker stubs.HaloResponse, res *stubs.EmptyResponse) (err error) {
 	inHalo <- haloFromBroker
+	return
+}
+
+func (s *Node) PauseAndResumeNode(req stubs.PauseRequest, res *stubs.EmptyResponse) (err error) {
+	if req.Command == "PAUSE" {
+		paused <- 1
+	}
+	if req.Command == "RESUME"{
+		resume <- 1
+	}
 	return
 }
 
