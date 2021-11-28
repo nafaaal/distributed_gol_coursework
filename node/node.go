@@ -38,7 +38,7 @@ func calculateNeighbours(width, x, y int, haloWorld [][]uint8) int {
 	return neighbours
 }
 
-func calculateNextState(width, height int, haloWorld [][]uint8) [][]uint8 {
+func calculateNextState(height, width int, haloWorld [][]uint8) [][]uint8 {
 
 	newWorld := makeMatrix(height, width)
 
@@ -71,9 +71,7 @@ func makeMatrix(height, width int) [][]uint8 {
 	return matrix
 }
 
-func findAliveCellCount(world [][]uint8) int {
-	var height = len(world)
-	var width = len(world[0])
+func findAliveCellCount(height, width int, world [][]uint8) int {
 	var count = 0
 	for col := 0; col < height; col++ {
 		for row := 0; row < width; row++ {
@@ -85,14 +83,12 @@ func findAliveCellCount(world [][]uint8) int {
 	return count
 }
 
-func flippedCells(req stubs.NodeRequest, initial, nextState [][]uint8) []util.Cell {
-	length := len(initial)
-	height := len(initial[0])
+func flippedCells(height, width, startY int, initial, nextState [][]uint8) []util.Cell {
 	var flipped []util.Cell
-	for col := 0; col < length; col++ {
-		for row := 0; row < height; row++ {
+	for col := 0; col < height; col++ {
+		for row := 0; row < width; row++ {
 			if initial[col][row] != nextState[col][row] {
-				flipped = append(flipped, util.Cell{X: row, Y: req.StartY + col})
+				flipped = append(flipped, util.Cell{X: row, Y: startY + col})
 			}
 		}
 	}
@@ -105,7 +101,6 @@ func (s *Node) ProcessSlice(req stubs.NodeRequest, res *stubs.NodeResponse) (err
 
 		var nextWorld [][]uint8
 		var neighboursWorld [][]uint8
-		//var h1, h2 []uint8
 
 		select {
 		case halo := <-inHalo:
@@ -114,19 +109,18 @@ func (s *Node) ProcessSlice(req stubs.NodeRequest, res *stubs.NodeResponse) (err
 			neighboursWorld = append(neighboursWorld, halo.LastHalo)
 		}
 
-		h := len(world)
-		w := req.Width
-		nextWorld = calculateNextState(w, h, neighboursWorld)
+		worldHeight := len(world)
+		worldWidth := req.Width
+		nextWorld = calculateNextState(worldHeight, worldWidth, neighboursWorld)
 
 		mutex.Lock()
 
-		flippedCellChannels <- flippedCells(req, world, nextWorld)
+		flippedCellChannels <- flippedCells(worldHeight, worldWidth, req.StartY, world, nextWorld)
 		world = nextWorld
-		aliveCellCountChannel <- findAliveCellCount(world)
-
+		aliveCellCountChannel <- findAliveCellCount(worldHeight, worldWidth, world)
 		outHalo <- stubs.HaloResponse{FirstHalo: world[0], LastHalo: world[len(nextWorld)-1]}
-
 		turnChannel <- turn
+
 		mutex.Unlock()
 	}
 	res.WorldSlice = world

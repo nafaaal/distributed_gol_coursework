@@ -11,7 +11,7 @@ import (
 	"uk.ac.bris.cs/gameoflife/util"
 )
 
-var turn int
+var globalTurn int
 var globalWorld [][]uint8
 var globalAlive int
 var mutex sync.Mutex
@@ -69,7 +69,6 @@ func sendWorkers(req stubs.Request) [][]uint8 {
 	}
 
 	workerSlices := getWorkerSlices(req)
-
 	for j, slices := range workerSlices{
 		go workerNode(clients[j], slices[0], slices[1], req.ImageWidth, req.InitialWorld[slices[0]:slices[1]], req.Turns, responses[j])
 	}
@@ -154,15 +153,12 @@ func haloExchange(oldHalos []stubs.HaloResponse) []stubs.HaloResponse { //if 2 s
 func sendHalo(halos []stubs.HaloResponse) {
 	halo := haloExchange(halos)
 	for index, client := range clients {
-		var hell = halo[index]
-		err := client.Call(stubs.SendHaloToNode, hell, &stubs.EmptyResponse{})
+		err := client.Call(stubs.SendHaloToNode, halo[index], &stubs.EmptyResponse{})
 		if err != nil {
 			return
 		}
 	}
 }
-
-// }
 
 func haloWorker(turns int, req stubs.Request) {
 
@@ -192,7 +188,7 @@ func getTurnsAndCellCount(turns int) {
 		}
 		mutex.Lock()
 		globalAlive = alive
-		turn = response.Turn
+		globalTurn = response.Turn
 		turnChannel <- response.Turn
 		mutex.Unlock()
 
@@ -219,7 +215,7 @@ func (s *GameOfLifeOperation) CompleteTurn(req stubs.Request, res *stubs.Respons
 
 func (s *GameOfLifeOperation) AliveCellGetter(req stubs.EmptyRequest, res *stubs.TurnResponse) (err error) {
 	mutex.Lock()
-	res.Turn = turn
+	res.Turn = globalTurn
 	res.NumOfAliveCells = globalAlive
 	mutex.Unlock()
 	return
