@@ -114,7 +114,7 @@ func flipCellHandler(turns int) {
 	}
 }
 
-// func to make return all top and bottom slices for all parts 512 0, 511   0 255 256 511
+//Collects all the halo regions of the initial world and sends it to sendHalo
 func sendInitialHalo(req stubs.Request) {
 
 	workerSlices := getWorkerSlices(req)
@@ -222,7 +222,20 @@ func (s *GameOfLifeOperation) AliveCellGetter(req stubs.EmptyRequest, res *stubs
 }
 
 func (s *GameOfLifeOperation) GetWorld(req stubs.EmptyRequest, res *stubs.WorldResponse) (err error) {
+
+	var newWorld [][]uint8
+	for i, client := range clients{
+		response := new(stubs.NodeResponse)
+		err := client.Call(stubs.GetNode, req, response)
+		if err != nil {
+			fmt.Printf("Could not get world of worker number %d\n", i)
+			return err
+		}
+		newWorld = append(newWorld, response.WorldSlice...)
+	}
+
 	mutex.Lock()
+	globalWorld = newWorld
 	res.World = globalWorld //make a function to call all nodes and get their slices and make into 1
 	mutex.Unlock()
 	return
@@ -242,10 +255,10 @@ func (s *GameOfLifeOperation) GetWorldPerTurn(req stubs.EmptyRequest, res *stubs
 }
 
 func (s *GameOfLifeOperation) PauseAndResume(req stubs.PauseRequest, res *stubs.EmptyResponse) (err error){
-	for _, client := range clients{
+	for i, client := range clients{
 		err := client.Call(stubs.PauseAndResumeNode, req, &stubs.EmptyResponse{})
 		if err != nil {
-			fmt.Println("Couldnt not pause / resume worker")
+			fmt.Printf("Couldnt not pause / resume worker number %d\n", i)
 			return err
 		}
 	}

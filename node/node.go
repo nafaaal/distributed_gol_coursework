@@ -181,6 +181,13 @@ func (s *Node) PauseAndResumeNode(req stubs.PauseRequest, res *stubs.EmptyRespon
 	return
 }
 
+func (s *Node) GetNode(req stubs.EmptyRequest, res *stubs.NodeResponse) (err error) {
+	mutex.Lock()
+	res.WorldSlice = world
+	mutex.Unlock()
+	return
+}
+
 func main() {
 	pAddr := flag.String("port", "8030", "Port to listen on")
 	flag.Parse()
