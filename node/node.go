@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/rpc"
 	"sync"
+
 	"uk.ac.bris.cs/gameoflife/stubs"
 	"uk.ac.bris.cs/gameoflife/util"
 )
@@ -15,7 +16,6 @@ var mutex sync.Mutex
 var flippedCellChannels = make(chan []util.Cell)
 var aliveCellCountChannel = make(chan int)
 var turnChannel = make(chan int)
-
 
 type Node struct{}
 
@@ -84,12 +84,13 @@ func calculateNextState(req stubs.NodeRequest, initialWorld [][]uint8) [][]uint8
 	}
 	return newWorld
 }
-func flippedCells(initial, nextState [][]uint8) []util.Cell{
-	length := len(initial)
+func flippedCells(initial, nextState [][]uint8) []util.Cell {
+	h := len(initial)
+	w := len(initial[0])
 	var flipped []util.Cell
-	for col := 0; col < length; col++ {
-		for row := 0; row < length; row++ {
-			if initial[col][row] != nextState[col][row]{
+	for col := 0; col < h; col++ {
+		for row := 0; row < w; row++ {
+			if initial[col][row] != nextState[col][row] {
 				flipped = append(flipped, util.Cell{X: row, Y: col})
 			}
 		}
@@ -99,7 +100,7 @@ func flippedCells(initial, nextState [][]uint8) []util.Cell{
 
 func (s *Node) ProcessSlice(req stubs.NodeRequest, res *stubs.NodeResponse) (err error) {
 	world = req.CurrentWorld
-	for turn := 1; turn < req.Turns+1; turn++{
+	for turn := 1; turn < req.Turns+1; turn++ {
 		var nextWorld [][]uint8
 		nextWorld = calculateNextState(req, world)
 		mutex.Lock()
@@ -115,7 +116,7 @@ func (s *Node) ProcessSlice(req stubs.NodeRequest, res *stubs.NodeResponse) (err
 
 func (s *Node) GetFlippedCells(req stubs.EmptyRequest, res *stubs.FlippedCellResponse) (err error) {
 	select {
-	case flipped := <- flippedCellChannels:
+	case flipped := <-flippedCellChannels:
 		res.FlippedCells = flipped
 	}
 	return
@@ -123,7 +124,7 @@ func (s *Node) GetFlippedCells(req stubs.EmptyRequest, res *stubs.FlippedCellRes
 
 func (s *Node) GetAliveCellCount(req stubs.EmptyRequest, res *stubs.AliveCellCountResponse) (err error) {
 	select {
-	case count := <- aliveCellCountChannel:
+	case count := <-aliveCellCountChannel:
 		res.Count = count
 	}
 	return
@@ -131,21 +132,20 @@ func (s *Node) GetAliveCellCount(req stubs.EmptyRequest, res *stubs.AliveCellCou
 
 func (s *Node) GetTurn(req stubs.EmptyRequest, res *stubs.TurnResponse) (err error) {
 	select {
-	case turn := <- turnChannel:
+	case turn := <-turnChannel:
 		res.Turn = turn
 	}
 	return
 }
 
-
 func (s *Node) GetTurnAndAliveCell(req stubs.EmptyRequest, res *stubs.TurnResponse) (err error) {
-	for i := 0; i<2; i++ {
+	for i := 0; i < 2; i++ {
 		select {
-	case turn := <- turnChannel:
-		res.Turn = turn
-	case count := <- aliveCellCountChannel:
-		res.NumOfAliveCells = count
-	}
+		case turn := <-turnChannel:
+			res.Turn = turn
+		case count := <-aliveCellCountChannel:
+			res.NumOfAliveCells = count
+		}
 	}
 	return
 }
