@@ -84,15 +84,15 @@ func calculateNextState(req stubs.NodeRequest, initialWorld [][]uint8) [][]uint8
 	}
 	return newWorld
 }
-func flippedCells(initial, nextState [][]uint8) []util.Cell {
+func flippedCells(initial, nextState [][]uint8, startY int) []util.Cell {
 	fmt.Println(len(initial), len(nextState))
-	h := len(initial)
+	h := len(nextState)
 	w := len(initial[0])
 	var flipped []util.Cell
 	for col := 0; col < h; col++ {
 		for row := 0; row < w; row++ {
 			if initial[col][row] != nextState[col][row] {
-				flipped = append(flipped, util.Cell{X: row, Y: col})
+				flipped = append(flipped, util.Cell{X: row, Y: startY + col})
 			}
 		}
 	}
@@ -105,7 +105,7 @@ func (s *Node) ProcessSlice(req stubs.NodeRequest, res *stubs.NodeResponse) (err
 		var nextWorld [][]uint8
 		nextWorld = calculateNextState(req, world)
 		mutex.Lock()
-		flippedCellChannels <- flippedCells(world, nextWorld)
+		flippedCellChannels <- flippedCells(world, nextWorld, req.StartY)
 		aliveCellCountChannel <- findAliveCellCount(nextWorld, req)
 		turnChannel <- turn
 		world = nextWorld
