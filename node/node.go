@@ -42,11 +42,12 @@ func findAliveCellCount(world [][]uint8, req stubs.NodeRequest) int {
 }
 
 func getNumberOfNeighbours(p stubs.NodeRequest, col, row int, worldCopy [][]uint8) uint8 {
+	height := p.StartY - p.EndY
 	var neighbours uint8
 	for i := -1; i < 2; i++ {
 		for j := -1; j < 2; j++ {
 			if i != 0 || j != 0 { //{i=0, j=0} is the cell you are trying to get neighbours of!
-				height := (col + p.Width + i) % p.Width // NEED TO CHANGE to height
+				height := (col + height + i) % height // NEED TO CHANGE to height
 				width := (row + p.Width + j) % p.Width
 				if worldCopy[height][width] == 255 {
 					neighbours++
