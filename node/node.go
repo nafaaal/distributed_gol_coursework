@@ -85,6 +85,7 @@ func calculateNextState(req stubs.NodeRequest, initialWorld [][]uint8) [][]uint8
 	return newWorld
 }
 func flippedCells(initial, nextState [][]uint8) []util.Cell {
+	fmt.Println(len(initial), len(nextState))
 	h := len(initial)
 	w := len(initial[0])
 	var flipped []util.Cell
