@@ -51,7 +51,35 @@ func workerNode(client *rpc.Client, startHeight, endHeight, width int, currentWo
 	results <- response.WorldSlice
 }
 
-func getNextWorld(req stubs.Request, workerConnections []*rpc.Client, workerChannels []chan [][]uint8) [][]uint8 {
+func getWorkerSlice(world [][]uint8, startY, endY, workerIndex, numberOfWorkers int)[][]uint8{
+	var workerSlice [][]uint8
+	worldHeight := len(world)
+	if numberOfWorkers == 1 {
+		fmt.Println("here")
+		workerSlice = append(workerSlice, world[worldHeight-1])
+		workerSlice = append(workerSlice, world...)
+		workerSlice = append(workerSlice, world[0])
+		return workerSlice
+	}
+	if workerIndex == 0 {
+		workerSlice = append(workerSlice, world[worldHeight-1])
+		workerSlice = append(workerSlice, world[startY:endY]...)
+		workerSlice = append(workerSlice, world[endY])
+	} else if workerIndex == numberOfWorkers-1 {
+		fmt.Println(startY, endY)
+		workerSlice = append(workerSlice, world[startY-1])
+		workerSlice = append(workerSlice, world[startY:endY]...)
+		workerSlice = append(workerSlice, world[0])
+	} else {
+		fmt.Println("going to else")
+		workerSlice = append(workerSlice, world[startY-1])
+		workerSlice = append(workerSlice, world[startY:endY]...)
+		workerSlice = append(workerSlice, world[endY])
+	}
+	return workerSlice
+}
+
+func getNextWorld(req stubs.Request, world [][]uint8, workerConnections []*rpc.Client, workerChannels []chan [][]uint8) [][]uint8 {
 	var newPixelData [][]uint8
 	workerHeight := req.ImageHeight / len(req.Workers)
 
@@ -61,11 +89,13 @@ func getNextWorld(req stubs.Request, workerConnections []*rpc.Client, workerChan
 		if j == len(req.Workers) - 1 { // send the extra part when workerHeight is not a whole number in last iteration
 			endHeight += req.ImageHeight % len(req.Workers)
 		}
-		go workerNode(workerConnections[j], startHeight, endHeight, req.ImageWidth, world, workerChannels[j])
+		workerSlice := getWorkerSlice(world, startHeight, endHeight, j, len(req.Workers))
+		go workerNode(workerConnections[j], startHeight, endHeight, req.ImageWidth, workerSlice, workerChannels[j])
 	}
 
 	for k := 0; k < len(req.Workers); k++ {
 		result := <- workerChannels[k]
+		fmt.Println(len(result))
 		newPixelData = append(newPixelData, result...)
 	}
 	return newPixelData
@@ -74,7 +104,7 @@ func getNextWorld(req stubs.Request, workerConnections []*rpc.Client, workerChan
 func makeWorkerConnectionsAndChannels(workers []string) ([]*rpc.Client, []chan [][]uint8) {
 	var clientConnections []*rpc.Client
 	for i := 0; i < len(workers); i++ {
-		client, _ := rpc.Dial("tcp", workers[i]+":8082")
+		client, _ := rpc.Dial("tcp", workers[i])
 		clientConnections = append(clientConnections, client)
 	}
 
@@ -97,6 +127,7 @@ func closeWorkerConnections(workerConnections []*rpc.Client){
 
 
 func (s *GameOfLifeOperation) CompleteTurn(req stubs.Request, res *stubs.Response) (err error) {
+
 	if req.GameStatus == "NEW" {
 		resetState(req.ImageWidth)
 	}
@@ -107,7 +138,7 @@ func (s *GameOfLifeOperation) CompleteTurn(req stubs.Request, res *stubs.Respons
 
 	for turn < req.Turns && processGame {
 
-		newWorld := getNextWorld(req, workerConnections, workerChannels)
+		newWorld := getNextWorld(req, world, workerConnections, workerChannels)
 
 		mutex.Lock()
 		world = newWorld
@@ -139,7 +170,6 @@ func (s *GameOfLifeOperation) GetAliveCell(req stubs.EmptyRequest, res *stubs.Tu
 
 func (s *GameOfLifeOperation) Shutdown(req stubs.EmptyRequest, res *stubs.EmptyResponse) (err error) {
 	fmt.Println("Exiting...")
-	//shutdown all the nodes aswell
 	processGame = false
 	<- time.After(1*time.Second)
 	os.Exit(0)

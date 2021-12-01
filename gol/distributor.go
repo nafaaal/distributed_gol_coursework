@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net/rpc"
 	"strconv"
-	"strings"
 	"time"
 
 	"uk.ac.bris.cs/gameoflife/stubs"
@@ -148,14 +147,13 @@ func callEvents(p Params, c distributorChannels, initial, nextState [][]uint8, t
 }
 
 func sdlHandler(p Params, c distributorChannels, client *rpc.Client, initialWorld [][]uint8){
-	for i :=0; i<p.Turns; i++{
 
+	for i :=0; i<p.Turns; i++{
 		response := new(stubs.TurnResponse)
 		err := client.Call(stubs.GetWorldPerTurn, stubs.EmptyRequest{}, response)
 		if err != nil {
 			fmt.Println(err)
 		}
-
 		callEvents(p, c, initialWorld, response.CurrentWorld, response.Turn)
 		initialWorld = response.CurrentWorld
 	}
@@ -177,7 +175,10 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 	go keyPressesFunc(p, c, client, keyPresses)
 	go sdlHandler(p, c, client, initialWorld)
 
-	nodeAddresses := strings.Split(Server, ",")
+	//nodeAddresses := strings.Split(Server, ",")
+	//nodeAddresses := []string{"localhost:8082"}
+	nodeAddresses := []string{"localhost:8082", "localhost:8083"}
+
 	request := stubs.Request{Turns: p.Turns, Threads: p.Threads, ImageWidth: p.ImageHeight, ImageHeight: p.ImageWidth, GameStatus: "NEW", InitialWorld: initialWorld, Workers: nodeAddresses}
 	response := stubs.Response{World: makeMatrix(p.ImageWidth,p.ImageHeight)}
 

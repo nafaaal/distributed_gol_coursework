@@ -18,14 +18,15 @@ func makeMatrix(height, width int) [][]uint8 {
 	return matrix
 }
 
-func getNumberOfNeighbours(p stubs.NodeRequest, col, row int, worldCopy [][]uint8) uint8 {
-	var neighbours uint8
-	for i := -1; i < 2; i++ {
-		for j := -1; j < 2; j++ {
-			if i != 0 || j != 0 { //{i=0, j=0} is the cell you are trying to get neighbours of!
-				height := (col + p.Width + i) % p.Width // NEED TO CHANGE to height
-				width := (row + p.Width + j) % p.Width
-				if worldCopy[height][width] == 255 {
+func calculateNeighbours(width, x, y int, haloWorld [][]uint8) int {
+	height := len(haloWorld)
+	neighbours := 0
+	for i := -1; i <= 1; i++ {
+		for j := -1; j <= 1; j++ {
+			if i != 0 || j != 0 {
+				h := (y + height + i) % height
+				w := (x + width + j) % width
+				if haloWorld[h][w] == 255 {
 					neighbours++
 				}
 			}
@@ -34,27 +35,24 @@ func getNumberOfNeighbours(p stubs.NodeRequest, col, row int, worldCopy [][]uint
 	return neighbours
 }
 
-func calculateNextState(req stubs.NodeRequest) [][]byte {
-	height := req.EndY - req.StartY
-	width := req.Width
+func calculateNextState(height, width int, haloWorld [][]uint8) [][]uint8 {
+
 	newWorld := makeMatrix(height, width)
 
-	for col := 0; col < height; col++ {
-		for row := 0; row < width; row++ {
+	for c0, c2 := 1, 0; c0 < height+1; c0, c2 = c0+1, c2+1 {
+		for r := 0; r < width; r++ {
 
-			//startY+col gets the absolute y position when there is more than 1 worker
-			n := getNumberOfNeighbours(req, req.StartY+col, row, req.CurrentWorld)
-			currentState := req.CurrentWorld[req.StartY+col][row]
+			neighbours := calculateNeighbours(width, r, c0, haloWorld)
+			currentState := haloWorld[c0][r]
 
 			if currentState == 255 {
-				if n == 2 || n == 3 {
-					newWorld[col][row] = 255
+				if neighbours == 2 || neighbours == 3 {
+					newWorld[c2][r] = 255
 				}
 			}
-
 			if currentState == 0 {
-				if n == 3 {
-					newWorld[col][row] = 255
+				if neighbours == 3 {
+					newWorld[c2][r] = 255
 				}
 			}
 		}
@@ -63,7 +61,9 @@ func calculateNextState(req stubs.NodeRequest) [][]byte {
 }
 
 func (s *Node) ProcessSlice(req stubs.NodeRequest, res *stubs.NodeResponse) (err error) {
-	res.WorldSlice = calculateNextState(req)
+	height := len(req.CurrentWorld)-2
+	width := len(req.CurrentWorld[0])
+	res.WorldSlice = calculateNextState(height, width, req.CurrentWorld)
 	return
 }
 
